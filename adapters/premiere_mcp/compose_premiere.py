@@ -4,8 +4,9 @@ Consome os MESMOS contratos do composer ffmpeg (cut-list + motion-manifest +
 SRT) e entrega a estrutura que o usuário finaliza na mão:
 
   V1  motions full-frame nos tempos resolvidos (fundo sangra atrás da câmera)
-  V2  cortes da câmera escalados/posicionados na metade de baixo (Motion
-      editável clipe a clipe)
+  V2  cortes da câmera na metade de baixo com o enquadramento padrão do canal
+      (zoom com a cabeça quase encostando na divisa + Crop Top devolvendo a
+      divisa exata; Motion/Crop editáveis clipe a clipe)
   C1  caption track criada do SRT — texto corrigível no painel de Captions
 
 Cor NÃO entra por script (fluxo do canal): Paste Attributes da sequência de
@@ -28,13 +29,27 @@ from render_premiere import (BRIDGE_TEMP_DIR, SERVER_ENTRY, MCPError,
                              MCPStdioClient, build_batch, find_key)
 
 
+# Enquadramento padrão do canal (aprovado pelo usuário em 2026-07-30, validado
+# ao vivo na reel_plugin_admin): zoom sobre o fill da metade de baixo com a
+# cabeça quase encostando na divisa do motion. Assume o setup fixo do estúdio
+# (câmera parada, rosto na região central) — conferir por frame exportado.
+CAMERA_ZOOM = 1.305
+CAMERA_POSITION = [0.58, 0.6825]
+
+
 def camera_transform(src_w: int, src_h: int, seq_w: int,
-                     seq_h: int) -> tuple[float, list[float]]:
-    """Scale (%) e Position (normalizada) para a câmera preencher a metade de
-    baixo da sequência: altura vira seq_h/2, largura sobra e é cortada pelo
-    quadro (crop central implícito)."""
-    scale = round(seq_h / 2 / src_h * 100, 2)
-    return scale, [0.5, 0.75]
+                     seq_h: int) -> tuple[float, list[float], float]:
+    """Scale (%), Position (normalizada) e Crop Top (%) da câmera na metade de
+    baixo. O zoom faz o clipe subir acima da divisa (seq_h/2) para o rosto
+    subir junto; o Crop Top corta o excesso e devolve a divisa exata — o corte
+    vira transparência, então o motion de V1 continua aparecendo. Para fonte
+    4K 16:9 em 1080x1920: Scale 58, Position [0.58, 0.6825], Crop Top 22.03."""
+    scale = round(seq_h / 2 / src_h * 100 * CAMERA_ZOOM, 2)
+    position = list(CAMERA_POSITION)
+    clip_h = src_h * scale / 100
+    clip_top = position[1] * seq_h - clip_h / 2
+    crop_top = round(max(0.0, (seq_h / 2 - clip_top) / clip_h * 100), 2)
+    return scale, position, crop_top
 
 
 def build_motion_jsx(track_index: int, scale: float,
@@ -64,6 +79,53 @@ def build_motion_jsx(track_index: int, scale: float,
         }}
       }}
       return JSON.stringify({{success: true, clips: done}});
+    """
+
+
+def build_crop_jsx(track_index: int, top_pct: float) -> str:
+    """ExtendScript: efeito Crop com Top (%) em TODOS os clipes da track, em
+    uma chamada. Componentes sempre localizados por displayName — o Premiere 26
+    pode inserir efeito novo antes dos existentes, nunca confiar na posição."""
+    return f"""
+      app.enableQE();
+      var cropFx = qe.project.getVideoEffectByName("Crop");
+      if (!cropFx) return JSON.stringify({{success: false, error: "efeito Crop indisponível"}});
+      var seq = app.project.activeSequence;
+      var qeSeq = qe.project.getActiveSequence();
+      if (!seq || !qeSeq) return JSON.stringify({{success: false, error: "sem sequência ativa"}});
+      function findComp(domClip, name) {{
+        for (var k = 0; k < domClip.components.numItems; k++) {{
+          if (String(domClip.components[k].displayName) === name) return domClip.components[k];
+        }}
+        return null;
+      }}
+      var qeTrack = qeSeq.getVideoTrackAt({track_index});
+      var domTrack = seq.videoTracks[{track_index}];
+      var applied = 0, clipIdx = 0;
+      for (var i = 0; i < qeTrack.numItems; i++) {{
+        var item = qeTrack.getItemAt(i);
+        var kind = "";
+        try {{ kind = String(item.type); }} catch (e) {{}}
+        if (kind !== "Clip") continue;
+        var domClip = domTrack.clips[clipIdx];
+        var comp = findComp(domClip, "Crop");
+        if (!comp) {{
+          item.addVideoEffect(cropFx);
+          comp = findComp(domClip, "Crop");
+        }}
+        if (comp) {{
+          var done = false;
+          for (var j = 0; j < comp.properties.numItems; j++) {{
+            var p = comp.properties[j];
+            try {{
+              if (!done && p.displayName === "Top") {{ p.setValue({top_pct}, true); done = true; }}
+            }} catch (e2) {{}}
+          }}
+          applied++;
+        }}
+        clipIdx++;
+      }}
+      return JSON.stringify({{success: true, applied: applied}});
     """
 
 
@@ -157,13 +219,21 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
                                       {"projectItemId": cam_id})
         src_w = find_key(video_info, "width") or 3840
         src_h = find_key(video_info, "height") or 2160
-        scale, position = camera_transform(int(src_w), int(src_h), seq_w, seq_h)
-        print(f"posicionando câmera (scale {scale}%, pos {position})...")
+        scale, position, crop_top = camera_transform(int(src_w), int(src_h),
+                                                     seq_w, seq_h)
+        print(f"posicionando câmera (scale {scale}%, pos {position}, "
+              f"crop top {crop_top}%)...")
         moved = client.call_tool("execute_extendscript",
                                  {"script": build_motion_jsx(1, scale, position)})
         if moved.get("clips") != len(cam_clips):
             raise MCPError(f"Motion aplicado em {moved.get('clips')} de "
                            f"{len(cam_clips)} clipes")
+        if crop_top:
+            cropped = client.call_tool("execute_extendscript",
+                                       {"script": build_crop_jsx(1, crop_top)})
+            if cropped.get("applied") != len(cam_clips):
+                raise MCPError(f"Crop aplicado em {cropped.get('applied')} de "
+                               f"{len(cam_clips)} clipes")
 
         if srt_id:
             print("criando caption track do SRT...")
@@ -175,7 +245,8 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
         print(f"sequência '{sequence_name}' montada: {len(mg_clips)} motions + "
               f"{len(cam_clips)} cortes + captions (~{total:.1f}s). Projeto salvo.")
         print("Lembrete: cor = Paste Attributes da referência em V2 "
-              "(Lumetri Color + Noise; NUNCA marcar Motion).")
+              "(Lumetri Color + Noise; NUNCA marcar Motion nem Crop, "
+              "senão perde o enquadramento).")
     finally:
         client.close()
 

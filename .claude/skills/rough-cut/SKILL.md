@@ -91,11 +91,13 @@ Dado um vídeo bruto `<video>`:
    reel_<slug>.mp4`) NÃO roda por padrão — só quando o usuário pedir preview
    rápido ou publicação direta sem ajustes.
    Após o compose_premiere, aplicar a grade nos clipes de V2 (track_index=1)
-   com build_lumetri_jsx + noise_from_style, e centralizar a câmera com
-   build_motion_jsx (padrão validado: Scale 48, Position [0.57, 0.77] para
-   fonte 4K 16:9 — conferir por frame exportado). Avisar o usuário dos toques
-   manuais: estilo/posição da caption track (divisa, y≈960) e, se quiser as
-   curvas finas, Remove Attributes + Paste Attributes da referência em V2.
+   com build_lumetri_jsx + noise_from_style. O enquadramento padrão da câmera
+   (cabeça quase encostando na divisa: Scale 58, Position [0.58, 0.6825] +
+   Crop Top 22.03% para fonte 4K 16:9) já sai do camera_transform do próprio
+   compose_premiere — conferir por frame exportado (cabeça a ~20-35px da
+   divisa). Avisar o usuário dos toques manuais: estilo/posição da caption
+   track (divisa, y≈960) e, se quiser as curvas finas, Remove Attributes +
+   Paste Attributes da referência em V2 (NUNCA marcar Motion nem Crop).
 
 4. **Reportar** ao final, sempre:
    - duração original vs final;

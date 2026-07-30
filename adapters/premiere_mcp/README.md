@@ -50,6 +50,12 @@ Fragilidades descobertas no E2E de cor:
   é por clipe.
 - `remove_effect_by_name` não funciona (componentes não expõem remove/delete
   no ExtendScript) — daí a necessidade do JSX idempotente.
+- **`addVideoEffect` nem sempre anexa no fim**: no Premiere 26 o Noise entra
+  ANTES de um Lumetri já presente no clipe. Endereçar o efeito recém-criado
+  por `components[numItems - 1]` escreve no efeito errado (bug real pego em
+  2026-07-30: os valores do grain caíram DENTRO do Lumetri, zerando a
+  Saturation da grade, e o Noise ficou no default visível). Sempre relocalizar
+  por displayName depois do add — `ensureEffect` já faz isso.
 - `execute_extendscript` embrulha o script numa função: sem `return` o
   resultado vem `"undefined"`. E a resposta é string JSON dupla-codificada —
   `parse_tool_payload` do adaptador tolera payload não-dict.
@@ -90,11 +96,22 @@ Mesmo contrato do adaptador ffmpeg — este adaptador não decide corte, só exe
 Consome cut-list + motion-manifest + SRT (mesmos contratos do
 `compose_ffmpeg.py`) e monta o Reel como TIMELINE: sequência 1080x1920 criada
 de um clipe de motion (herda formato sem diálogo), V1 = motions full-frame nos
-tempos resolvidos, V2 = câmera com Motion Scale/Position na metade de baixo
-(JSX em lote), caption track do SRT via `import_media` + `create_caption_track`
-(texto corrigível no painel Captions; posição/estilo do track = ajuste único no
+tempos resolvidos, V2 = câmera no **enquadramento padrão do canal** (abaixo),
+caption track do SRT via `import_media` + `create_caption_track` (texto
+corrigível no painel Captions; posição/estilo do track = ajuste único no
 Essential Graphics). Cor: Paste Attributes da referência em V2 (NUNCA marcar
-Motion). E2E validado 2026-07-30: 6 motions + 27 cortes + captions.
+Motion nem Crop). E2E validado 2026-07-30: 6 motions + 27 cortes + captions.
+
+**Enquadramento padrão da câmera** (aprovado pelo usuário 2026-07-30, validado
+ao vivo na `reel_plugin_admin`): cabeça quase encostando na divisa do motion.
+`camera_transform` devolve zoom de 1.305× sobre o fill da metade de baixo
+(fonte 4K 16:9 em 1080x1920 → Scale 58, Position [0.58, 0.6825]) + efeito
+Crop com Top 22.03% (`build_crop_jsx`). O zoom faz o clipe subir acima da
+divisa para o rosto subir junto; o Crop corta o excesso — vira transparência,
+o motion de V1 segue aparecendo e a divisa fica exata em seq_h/2, sem fresta
+embaixo. Assume o setup fixo do estúdio (câmera parada, rosto na região
+central); se o footage mudar de enquadramento, conferir por frame exportado
+(cabeça a ~20-35px da divisa) e ajustar Position/crop.
 
 Fragilidade extra: `export_frame` interpreta `time` numa unidade não-linear
 (não é segundos nem frames×fps de forma consistente) — para conferência

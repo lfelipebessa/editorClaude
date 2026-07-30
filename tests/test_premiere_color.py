@@ -22,7 +22,7 @@ def test_lumetri_from_style_seco():
 
 
 def test_noise_from_style_seco():
-    assert noise_from_style(load_style("seco")["color"]) == 4
+    assert noise_from_style(load_style("seco")["color"]) == 15
 
 
 def test_noise_neutral_returns_none():
@@ -31,12 +31,14 @@ def test_noise_neutral_returns_none():
 
 
 def test_jsx_adds_noise_effect_when_requested():
-    jsx = build_lumetri_jsx({"Exposure": 0.07}, noise_amount=4)
+    # o Noise do Premiere 2026 é o efeito novo estilo grain:
+    # Intensity + Saturation (0 = grain só no luma), não "Amount of Noise"
+    jsx = build_lumetri_jsx({"Exposure": 0.07}, noise_amount=15)
     assert '"Noise"' in jsx, "devia garantir o efeito Noise no clipe"
-    assert '"Amount of Noise"' in jsx and "setValue(4, true)" in jsx
-    assert '"Use Color Noise"' in jsx, "grain deve ser só luma (color noise off)"
+    assert '"Intensity"' in jsx and "setValue(15, true)" in jsx
+    assert '"Saturation"' in jsx and "setValue(0, true)" in jsx
     jsx_sem = build_lumetri_jsx({"Exposure": 0.07})
-    assert '"Noise"' not in jsx_sem and "Amount of Noise" not in jsx_sem
+    assert '"Noise"' not in jsx_sem and '"Intensity"' not in jsx_sem
 
 
 def test_lumetri_neutral_returns_none():

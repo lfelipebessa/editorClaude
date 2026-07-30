@@ -56,6 +56,11 @@ Fragilidades descobertas no E2E de cor:
 - displayNames do Lumetri vêm em inglês (Exposure/Contrast/Shadows/...) neste
   install; propriedades repetem nome entre seções (Saturation em Basic e
   Creative) — o JSX usa guard para setar só a primeira ocorrência.
+- O efeito **Noise do Premiere 2026 é o novo, estilo film grain**
+  (Intensity/Shadows/Midtones/Highlights/Saturation/Blend Mode) — o clássico
+  "Amount of Noise" não existe mais. Grain do finish vira Intensity (grain×3)
+  + Saturation 0 (só luma). Atenção: só adicionar o efeito deixa Intensity 50
+  (default bem visível); sempre setar o valor na mesma passada.
 
 Consome a cut-list JSON (contrato no README da raiz) e monta a timeline no
 Premiere Pro: cria projeto novo, importa o vídeo fonte, cria sequência e coloca

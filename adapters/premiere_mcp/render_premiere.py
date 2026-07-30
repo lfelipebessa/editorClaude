@@ -170,10 +170,12 @@ def lumetri_from_style(color_cfg: dict) -> dict | None:
 
 
 def noise_from_style(color_cfg: dict) -> int | None:
-    """Grain do finish vira efeito Noise do Premiere (Amount of Noise em %).
-    O noise do ffmpeg é sigma em 8-bit (~2% com strength 5); ×0.8 aproxima."""
+    """Grain do finish vira Intensity do efeito Noise do Premiere 2026 (o novo,
+    estilo film grain: Intensity/Shadows/Midtones/Highlights/Saturation/Blend —
+    o clássico "Amount of Noise" não existe mais). Default do efeito é 50, bem
+    visível; ×3 sobre o strength do ffmpeg dá grain sutil equivalente."""
     grain = color_cfg.get("finish", {}).get("grain", 0)
-    return round(grain * 0.8) if grain else None
+    return round(grain * 3) if grain else None
 
 
 def build_lumetri_jsx(params: dict, track_index: int = 0,
@@ -199,8 +201,8 @@ def build_lumetri_jsx(params: dict, track_index: int = 0,
           for (var n = 0; n < noiseComp.properties.numItems; n++) {{
             var pn = noiseComp.properties[n];
             try {{
-              if (!doneN["a"] && pn.displayName === "Amount of Noise") {{ pn.setValue({noise_amount}, true); doneN["a"] = true; }}
-              if (!doneN["c"] && pn.displayName === "Use Color Noise") {{ pn.setValue(false, true); doneN["c"] = true; }}
+              if (!doneN["i"] && pn.displayName === "Intensity") {{ pn.setValue({noise_amount}, true); doneN["i"] = true; }}
+              if (!doneN["s"] && pn.displayName === "Saturation") {{ pn.setValue(0, true); doneN["s"] = true; }}
             }} catch (eN) {{}}
           }}
         }}"""

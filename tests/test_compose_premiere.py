@@ -8,8 +8,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "adapters" / "premiere_mcp"))
 
-from compose_premiere import (build_crop_jsx, build_motion_jsx,
+from compose_premiere import (build_crop_jsx, build_mg_clips, build_motion_jsx,
                               build_music_place_jsx, camera_transform)
+from render_premiere import build_batch
 
 
 def test_camera_transform_4k_standard_framing():
@@ -51,6 +52,44 @@ def test_crop_jsx_sets_top_by_display_name():
     # inserção do Premiere 26)
     assert "numItems - 1" not in jsx
     assert "videoTracks[1]" in jsx and "JSON.stringify" in jsx
+
+
+def test_build_batch_quantized_leaves_no_gaps():
+    # durações fracionárias arredondam pro grid de frames do Premiere e
+    # deixavam ~1 frame de buraco entre cortes (Close Gap não resolve com
+    # a V1 dos motions contínua) — quantizado, cada clipe termina EXATO
+    # onde o próximo começa
+    cutlist = {"segments": [{"start": 1.444, "end": 6.372},
+                            {"start": 8.101, "end": 9.033},
+                            {"start": 11.5, "end": 12.744}]}
+    clips = build_batch(cutlist, "id", fps=30)
+    assert clips[0]["time"] == 0.0
+    for cur, nxt in zip(clips, clips[1:]):
+        dur = cur["sourceOutPoint"] - cur["sourceInPoint"]
+        frames = dur * 30
+        assert abs(frames - round(frames)) < 1e-6, f"duração fora do grid: {dur}"
+        assert abs(nxt["time"] - (cur["time"] + dur)) < 1e-9, (cur, nxt)
+
+
+def test_build_batch_without_fps_keeps_exact_times():
+    cutlist = {"segments": [{"start": 1.444, "end": 6.372}]}
+    clips = build_batch(cutlist, "id")
+    assert clips[0]["sourceOutPoint"] == 6.372
+
+
+def test_mg_clips_pre_cut_at_camera_boundaries():
+    # motions nascem já cortados nos pontos de corte da câmera: apagar um
+    # trecho do rosto + o pedaço de motion acima e dar ripple delete fecha
+    # a timeline inteira sem dessincronizar (pedido do usuário, 2026-07-30)
+    scenes = [{"start": 0.0}, {"start": 10.0}]
+    clips = build_mg_clips(scenes, ["A", "B"], cam_starts=[3.0, 7.0, 12.0],
+                           total=15.0)
+    spans = [(c["time"], c["sourceInPoint"], c["sourceOutPoint"],
+              c["projectItemId"]) for c in clips]
+    assert spans == [(0.0, 0.0, 3.0, "A"), (3.0, 3.0, 7.0, "A"),
+                     (7.0, 7.0, 10.0, "A"),
+                     (10.0, 0.0, 2.0, "B"), (12.0, 2.0, 5.0, "B")], spans
+    assert all(c["trackIndex"] == 0 for c in clips)
 
 
 def test_music_place_jsx_uses_overwrite_on_empty_track():

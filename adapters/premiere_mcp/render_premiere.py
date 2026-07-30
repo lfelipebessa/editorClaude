@@ -348,17 +348,33 @@ def find_item_id_by_name(items_payload, media_name: str):
     return matches[0] if matches else None
 
 
-def build_batch(cutlist: dict, item_id: str) -> list[dict]:
-    clips, cursor = [], 0.0
+def build_batch(cutlist: dict, item_id: str, fps: int | None = None) -> list[dict]:
+    """Segmentos da cut-list -> clipes do add_to_timeline_batch.
+
+    Com fps, as durações são quantizadas ao grid de frames da SEQUÊNCIA:
+    durações fracionárias arredondam na colocação e deixavam ~1 frame de
+    buraco entre cortes (que o Close Gap não fecha quando outra track é
+    contínua). Quantizado, cada clipe termina exatamente onde o próximo
+    começa. Sem fps, comportamento exato legado.
+    """
+    clips, cursor, cursor_frames = [], 0.0, 0
     for seg in cutlist["segments"]:
+        if fps:
+            dur_frames = max(1, round((seg["end"] - seg["start"]) * fps))
+            time = cursor_frames / fps
+            out = seg["start"] + dur_frames / fps
+            cursor_frames += dur_frames
+        else:
+            time = round(cursor, 3)
+            out = seg["end"]
+            cursor += seg["end"] - seg["start"]
         clips.append({
             "projectItemId": item_id,
             "trackIndex": 0,
-            "time": round(cursor, 3),
+            "time": time,
             "sourceInPoint": seg["start"],
-            "sourceOutPoint": seg["end"],
+            "sourceOutPoint": out,
         })
-        cursor += seg["end"] - seg["start"]
     return clips
 
 

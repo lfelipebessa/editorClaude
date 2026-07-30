@@ -18,6 +18,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from math import ceil
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -68,6 +69,21 @@ def build_camera_branch(src_w: int, src_h: int, x_offset: int,
 DEFAULT_CAPTION_FONT = "/System/Library/Fonts/Supplemental/Arial Black.ttf"
 
 
+def _wrap_caption(text: str, probe, font, stroke: int, max_w: int) -> str:
+    """Quebra em 2 linhas balanceadas quando o bloco não cabe em max_w —
+    com fonte grande, blocos de 3 palavras podem passar de 1080."""
+    def width(t):
+        box = probe.textbbox((0, 0), t, font=font, stroke_width=stroke)
+        return box[2] - box[0]
+    words = text.split()
+    if len(words) < 2 or width(text) <= max_w:
+        return text
+    splits = ((max(width(" ".join(words[:i])), width(" ".join(words[i:]))),
+               " ".join(words[:i]) + "\n" + " ".join(words[i:]))
+              for i in range(1, len(words)))
+    return min(splits)[1]
+
+
 def render_caption_images(chunks: list[dict], cfg: dict,
                           out_dir: Path) -> list[Path]:
     """Cada legenda vira um PNG transparente (Pillow) — o ffmpeg desta máquina
@@ -77,16 +93,21 @@ def render_caption_images(chunks: list[dict], cfg: dict,
     font = ImageFont.truetype(cfg.get("font_file", DEFAULT_CAPTION_FONT),
                               cfg.get("size", 64))
     stroke = cfg.get("outline", 4)
+    max_w = cfg.get("max_width", 1040)
     pad = stroke + 8
     paths = []
     for i, c in enumerate(chunks):
         probe = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
-        box = probe.textbbox((0, 0), c["text"], font=font, stroke_width=stroke)
-        img = Image.new("RGBA", (box[2] - box[0] + 2 * pad,
-                                 box[3] - box[1] + 2 * pad), (0, 0, 0, 0))
+        text = _wrap_caption(c["text"], probe, font, stroke, max_w)
+        box = probe.textbbox((0, 0), text, font=font, stroke_width=stroke,
+                             align="center")
+        # textbbox multilinha retorna floats; Image.new exige ints
+        img = Image.new("RGBA", (ceil(box[2] - box[0]) + 2 * pad,
+                                 ceil(box[3] - box[1]) + 2 * pad), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        draw.text((pad - box[0], pad - box[1]), c["text"], font=font,
-                  fill="white", stroke_width=stroke, stroke_fill="black")
+        draw.text((pad - box[0], pad - box[1]), text, font=font,
+                  fill="white", stroke_width=stroke, stroke_fill="black",
+                  align="center")
         path = out_dir / f"cap{i:03d}.png"
         img.save(path)
         paths.append(path)

@@ -67,11 +67,13 @@
   },
   "captions": {
     "font_file": "/System/Library/Fonts/Supplemental/Arial Black.ttf",
-    "size": 64,
-    "outline": 4,
+    "size": 72,
+    "outline": 6,
+    "max_width": 1040,
     "max_words": 3,
     "max_gap": 0.6,
-    "uppercase": true
+    "uppercase": true,
+    "strip_punctuation": true
   },
   "music": {
     "default": "musicafundo3",

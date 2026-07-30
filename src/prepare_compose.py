@@ -14,6 +14,7 @@ que tem o brief.md); os clips são procurados em out/<nome-do-dir>/clips/.
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -86,6 +87,11 @@ def main() -> None:
     if cap_cfg.get("uppercase", True):
         for c in chunks:
             c["text"] = c["text"].upper()
+    if cap_cfg.get("strip_punctuation", True):
+        # legenda de rede social não leva ponto final/exclamação; "?" e
+        # reticências ficam (pergunta é rara mas existe).
+        for c in chunks:
+            c["text"] = re.sub(r"(?<!\.)\.(?=\s|$)|!(?=\s|$)", "", c["text"])
     out_srt.write_text(format_srt(chunks))
 
     total = round(sum(s["end"] - s["start"] for s in cutlist["segments"]), 1)

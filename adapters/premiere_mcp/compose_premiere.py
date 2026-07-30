@@ -172,6 +172,30 @@ def build_music_place_jsx(item_id: str, track_index: int, offset: float,
     """
 
 
+def build_mg_clips(scenes: list[dict], mg_ids: list[str],
+                   cam_starts: list[float], total: float) -> list[dict]:
+    """Motions para V1 JÁ CORTADOS nos pontos de corte da câmera.
+
+    Com os cortes alinhados, apagar um trecho do rosto + o pedaço de motion
+    acima e dar ripple delete fecha a timeline inteira mantendo o sync
+    (com a track da música LOCKED). O conteúdo visual não muda: os pedaços
+    são fatias contíguas do mesmo clipe de motion.
+    """
+    clips = []
+    for i, (sc, mg_id) in enumerate(zip(scenes, mg_ids)):
+        start = sc["start"]
+        end = scenes[i + 1]["start"] if i + 1 < len(scenes) else total
+        bounds = ([round(start, 5)]
+                  + [round(t, 5) for t in cam_starts if start < t < end]
+                  + [round(end, 5)])
+        for a, b in zip(bounds, bounds[1:]):
+            clips.append({"projectItemId": mg_id, "trackIndex": 0,
+                          "time": a,
+                          "sourceInPoint": round(a - start, 5),
+                          "sourceOutPoint": round(b - start, 5)})
+    return clips
+
+
 def add_music(client: MCPStdioClient, seq_id: str, music_file: Path,
               music_cfg: dict, total: float) -> float:
     """Música de fundo numa track de áudio VAZIA (procura a primeira livre;
@@ -264,16 +288,11 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
         client.call_tool("delete_sequence", {"sequenceId": str(tmp_id)})
         client.call_tool("set_active_sequence", {"sequenceId": str(seq_id)})
 
-        # V1: motions nos tempos resolvidos do manifest (full-frame)
-        mg_clips = []
-        for sc, mg_id in zip(scenes, mg_ids):
-            i = scenes.index(sc)
-            end = scenes[i + 1]["start"] if i + 1 < len(scenes) else total
-            mg_clips.append({"projectItemId": mg_id, "trackIndex": 0,
-                             "time": round(sc["start"], 3),
-                             "sourceInPoint": 0,
-                             "sourceOutPoint": round(end - sc["start"], 3)})
-        print(f"V1: {len(mg_clips)} motions...")
+        # V1: motions nos tempos resolvidos, PRÉ-CORTADOS nos cortes da câmera
+        cam_clips = build_batch(cutlist, cam_id, fps=layout.get("fps", 30))
+        cam_starts = [c["time"] for c in cam_clips[1:]]
+        mg_clips = build_mg_clips(scenes, mg_ids, cam_starts, total)
+        print(f"V1: {len(mg_clips)} pedaços de motion (cortes alinhados à câmera)...")
         result = client.call_tool("add_to_timeline_batch",
                                   {"sequenceId": str(seq_id), "clips": mg_clips})
         if find_key(result, "status") == "failure":
@@ -285,7 +304,6 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
         if n_video < 2:
             client.call_tool("add_track", {"sequenceId": str(seq_id),
                                            "trackType": "video"})
-        cam_clips = build_batch(cutlist, cam_id)
         for c in cam_clips:
             c["trackIndex"] = 1
         print(f"V2: {len(cam_clips)} cortes de câmera...")

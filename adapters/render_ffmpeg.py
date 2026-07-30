@@ -54,6 +54,16 @@ def build_color_chain(color_cfg: dict) -> str:
     curve = adjust.get("curve_s")
     if curve:
         parts.append(f"curves=master='{curve}'")
+    whites = adjust.get("whites", 0)
+    blacks = adjust.get("blacks", 0)
+    if whites or blacks:
+        # aproximação dos sliders Whites/Blacks do Lumetri (escala -100..100):
+        # blacks<0 esmaga o preto (sobe o ponto de entrada), whites>0 acende o
+        # branco (desce o teto de entrada). Direções opostas não suportadas.
+        imin = round(max(0.0, -blacks * 0.003), 3)
+        imax = round(min(1.0, 1 - whites * 0.003), 3)
+        parts.append(f"colorlevels=rimin={imin}:gimin={imin}:bimin={imin}:"
+                     f"rimax={imax}:gimax={imax}:bimax={imax}")
     vibrance = adjust.get("vibrance", 0.0)
     if vibrance:
         parts.append(f"vibrance=intensity={vibrance}")

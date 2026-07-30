@@ -20,11 +20,13 @@
     "lut": null,
     "lut_note": "Workflow do canal: footage vem via export do app DJI Mimo, que entrega SEMPRE H.264 8-bit Rec.709 (mesmo gravando D-Log M na câmera, o Mimo queima a conversão no export). Por isso a LUT fica desligada e o tratamento é curve_s + vibrance + exposure. A LUT oficial D-Log M (assets/luts/dji_dlogm_to_rec709_v1.cube, 33x33x33, validada no ffmpeg) só entra se um dia o material vier do cartão SD em D-Log M 10-bit — aí apontar o campo lut para ela.",
     "adjust": {
-      "exposure_ev": 0.07,
-      "contrast": 1.0,
-      "saturation": 1.06,
+      "exposure_ev": -0.2,
+      "contrast": 1.28,
+      "saturation": 1.24,
       "gamma": 1.0,
-      "curve_s": "0/0 0.2/0.17 0.5/0.52 0.8/0.85 1/1",
+      "whites": 5,
+      "blacks": -12,
+      "curve_s": "0/0 0.2/0.173 0.5/0.438 0.8/0.703 1/1",
       "vibrance": 0.58
     },
     "finish": {

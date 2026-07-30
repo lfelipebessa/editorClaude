@@ -15,10 +15,18 @@ from render_premiere import (build_lumetri_jsx, lumetri_from_style,
 
 
 def test_lumetri_from_style_seco():
+    # valores calibrados pelo usuário no Premiere em 2026-07-30 (clipe 1 da
+    # rough_cut_dji_v4_audio) e traduzidos de volta para o style
     params = lumetri_from_style(load_style("seco")["color"])
-    assert params == {"Exposure": 0.07, "Contrast": 13, "Shadows": -12,
-                      "Highlights": 20, "Saturation": 106, "Vibrance": 58,
-                      "Sharpen": 30}, params
+    assert params == {"Exposure": -0.2, "Contrast": 16, "Shadows": -11,
+                      "Highlights": -39, "Whites": 5, "Blacks": -12,
+                      "Saturation": 124, "Vibrance": 58, "Sharpen": 30}, params
+
+
+def test_whites_blacks_pass_through_to_lumetri():
+    cfg = {"lut": None, "adjust": {"whites": 5, "blacks": -12.4}}
+    params = lumetri_from_style(cfg)
+    assert params == {"Whites": 5, "Blacks": -12}, params
 
 
 def test_noise_from_style_seco():

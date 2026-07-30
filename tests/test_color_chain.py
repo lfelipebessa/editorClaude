@@ -72,6 +72,18 @@ def test_curves_come_before_eq():
     assert chain.index("curves=") < chain.index("vibrance=") < chain.index("eq="), chain
 
 
+def test_whites_blacks_become_colorlevels():
+    cfg = {"lut": None, "adjust": {"whites": 5, "blacks": -12}}
+    chain = build_color_chain(cfg)
+    assert chain == ("colorlevels=rimin=0.036:gimin=0.036:bimin=0.036:"
+                     "rimax=0.985:gimax=0.985:bimax=0.985"), chain
+
+
+def test_whites_blacks_zero_no_colorlevels():
+    cfg = {"lut": None, "adjust": {"whites": 0, "blacks": 0, "saturation": 1.1}}
+    assert "colorlevels" not in build_color_chain(cfg)
+
+
 def test_finish_chain_sharpen_and_grain():
     cfg = {"finish": {"sharpen": 0.4, "grain": 5}}
     chain = build_finish_chain(cfg)

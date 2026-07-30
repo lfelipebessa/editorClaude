@@ -160,6 +160,12 @@ def lumetri_from_style(color_cfg: dict) -> dict | None:
         params["Contrast"] = round(contrast)
     if adjust.get("saturation", 1.0) != 1.0:
         params["Saturation"] = round(adjust["saturation"] * 100)
+    whites = adjust.get("whites", 0)
+    if whites:
+        params["Whites"] = round(whites)
+    blacks = adjust.get("blacks", 0)
+    if blacks:
+        params["Blacks"] = round(blacks)
     vibrance = adjust.get("vibrance", 0.0)
     if vibrance:
         params["Vibrance"] = round(vibrance * 100)

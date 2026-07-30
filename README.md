@@ -36,6 +36,12 @@ python src/transcribe.py video.mp4 -o output/transcript.json
 # 2. Gerar cut-list
 python src/cutlist.py output/transcript.json -o output/cutlist.json
 
+# 2b. Corte agressivo estilo rede social (jump cut seco)
+python src/cutlist.py output/transcript.json --preset seco -o output/cutlist.json
+# ou ajuste fino: --trim-start 0.07 --trim-end 0.12 --max-word-gap 0.25
+#   trim-start/trim-end: segundos cortados DENTRO da fala nas bordas de cada segmento
+#   max-word-gap: pausa entre palavras acima da qual vira corte (default 0.8s)
+
 # 3. Renderizar rough cut
 python adapters/render_ffmpeg.py video.mp4 output/cutlist.json -o output/rough_cut.mp4
 ```
@@ -78,6 +84,7 @@ A cut-list é o contrato central do projeto. Todo adaptador de saída consome ex
 Regras do contrato:
 
 - **`version`** — inteiro; incrementa em toda mudança incompatível do formato.
+- **`settings`** — opcional, informativo: os parâmetros usados na geração (preset, trims, gaps). Adaptadores devem ignorar.
 - **`source.path`** — caminho absoluto do vídeo original; `source.duration` em segundos.
 - **`segments`** — trechos a MANTER, na ordem de saída. Tempos em segundos (float), relativos ao vídeo original. Segmentos são não sobrepostos, ordenados por `start`, e já incluem o padding de respiro — o adaptador não adiciona margens.
 - **`removed`** — trechos descartados, apenas para auditoria/debug. `reason` ∈ `silence` | `stutter` | `false_start` | `repetition` | `filler`. Adaptadores devem ignorar este campo.

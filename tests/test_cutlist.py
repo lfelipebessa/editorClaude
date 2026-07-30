@@ -124,6 +124,42 @@ def test_detected_silence_overrides_stretched_word():
     assert "silence" in reasons(c)
 
 
+def test_edge_trim_cuts_into_speech():
+    t = make_transcript([
+        ("fala", 1.0, 1.3),
+        ("normal", 1.4, 1.9),
+        ("aqui", 2.0, 2.5),
+    ])
+    c = generate_cutlist(t, {"trim_start": 0.07, "trim_end": 0.12,
+                             "pad_before": 0.0, "pad_after": 0.0})
+    seg = c["segments"][0]
+    assert abs(seg["start"] - 1.07) < 0.001, seg
+    assert abs(seg["end"] - 2.38) < 0.001, seg
+
+
+def test_edge_trim_never_kills_short_segment():
+    t = make_transcript([("oi", 1.0, 1.25)])
+    c = generate_cutlist(t, {"trim_start": 0.1, "trim_end": 0.1,
+                             "pad_before": 0.0, "pad_after": 0.0})
+    seg = c["segments"][0]
+    assert seg["end"] - seg["start"] > 0, seg
+    assert seg["start"] == 1.0 and seg["end"] == 1.25, "devia manter bordas originais"
+
+
+def test_max_word_gap_cuts_short_pauses():
+    words = [
+        ("corta", 0.5, 0.8),
+        ("essas", 1.2, 1.5),    # gap 0.4s
+        ("pausinhas", 1.9, 2.4),  # gap 0.4s
+    ]
+    c_default = generate_cutlist(make_transcript(words))
+    assert len(c_default["segments"]) == 1, "default não devia cortar gap de 0.4s"
+    c_seco = generate_cutlist(make_transcript(words),
+                              {"max_word_gap": 0.25, "pad_before": 0.0, "pad_after": 0.0})
+    assert len(c_seco["segments"]) == 3, c_seco["segments"]
+    assert "silence" in reasons(c_seco)
+
+
 def test_clean_speech_untouched():
     t = make_transcript([
         ("fala", 0.5, 0.8),

@@ -6,12 +6,12 @@ documentado no README.
 
 Uso:
     python src/cutlist.py output/transcript.json -o output/cutlist.json
+    python src/cutlist.py output/transcript.json --preset seco   # jump cut agressivo
 """
 
 import argparse
 import difflib
 import json
-import re
 import string
 from pathlib import Path
 
@@ -19,9 +19,30 @@ MAX_SILENCE = 0.8       # pausa acima disso vira corte
 PAUSE_SPLIT = 0.6       # pausa que separa "frases" para análise
 PAD_BEFORE = 0.15       # respiro mantido antes da fala
 PAD_AFTER = 0.20        # respiro mantido depois da fala
+MIN_SEGMENT = 0.2       # duração mínima de um segmento após trims
 FALSE_START_MAX_WORDS = 4
 REPETITION_SIMILARITY = 0.8
 FILLERS = {"uh", "um", "hum", "hmm", "eh", "ehh", "ã", "ãh", "hã", "éé", "ééé"}
+
+DEFAULTS = {
+    "max_word_gap": MAX_SILENCE,  # gap entre palavras que vira corte
+    "pad_before": PAD_BEFORE,
+    "pad_after": PAD_AFTER,
+    "trim_start": 0.0,            # corta DENTRO da fala no início do segmento
+    "trim_end": 0.0,              # corta DENTRO da fala no fim do segmento
+}
+
+PRESETS = {
+    # jump cut agressivo estilo rede social: sem respiro, invade a fala nas
+    # bordas e mata qualquer pausa perceptível entre palavras
+    "seco": {
+        "max_word_gap": 0.25,
+        "pad_before": 0.0,
+        "pad_after": 0.0,
+        "trim_start": 0.07,
+        "trim_end": 0.12,
+    },
+}
 
 _PUNCT = str.maketrans("", "", string.punctuation + "…—“”‘’")
 
@@ -124,7 +145,7 @@ def remove_repetitions(words: list[dict]) -> None:
 
 
 def subtract_silences(segments: list[dict], silences: list[dict],
-                      kept_words: list[dict]) -> list[dict]:
+                      kept_words: list[dict], cfg: dict) -> list[dict]:
     """Corta silêncios detectados no áudio de dentro dos segmentos mantidos.
 
     Necessário porque o aligner às vezes estica uma palavra por cima da pausa,
@@ -133,9 +154,9 @@ def subtract_silences(segments: list[dict], silences: list[dict],
     pedaços sem palavra alguma (respiração, ruído entre silêncios) são descartados.
     """
     for sil in silences:
-        cut_start = sil["start"] + PAD_AFTER
-        cut_end = sil["end"] - PAD_BEFORE
-        if cut_end - cut_start < MAX_SILENCE:
+        cut_start = sil["start"] + cfg["pad_after"]
+        cut_end = sil["end"] - cfg["pad_before"]
+        if cut_end - cut_start < cfg["max_word_gap"]:
             continue
         result = []
         for seg in segments:
@@ -161,11 +182,29 @@ def subtract_silences(segments: list[dict], silences: list[dict],
     return out
 
 
-def build_intervals(words: list[dict], duration: float,
-                    silences: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Constrói segmentos mantidos (com padding) e lista de removidos.
+def apply_edge_trims(segments: list[dict], cfg: dict) -> list[dict]:
+    """Trim negativo: invade a fala nas bordas de cada segmento (corte seco).
 
-    Um segmento quebra em pausa > MAX_SILENCE ou quando há palavra descartada
+    Se o segmento ficaria menor que MIN_SEGMENT, mantém as bordas originais.
+    """
+    trim_start, trim_end = cfg["trim_start"], cfg["trim_end"]
+    if trim_start <= 0 and trim_end <= 0:
+        return segments
+    out = []
+    for seg in segments:
+        start = seg["start"] + trim_start
+        end = seg["end"] - trim_end
+        if end - start < MIN_SEGMENT:
+            start, end = seg["start"], seg["end"]
+        out.append({**seg, "start": round(start, 3), "end": round(end, 3)})
+    return out
+
+
+def build_intervals(words: list[dict], duration: float, silences: list[dict],
+                    cfg: dict) -> tuple[list[dict], list[dict]]:
+    """Constrói segmentos mantidos (com padding/trim) e lista de removidos.
+
+    Um segmento quebra em pausa > max_word_gap ou quando há palavra descartada
     no meio — senão o merge incluiria o trecho descartado no tempo do vídeo.
     """
     segments = []
@@ -174,7 +213,7 @@ def build_intervals(words: list[dict], duration: float,
         if not w["keep"]:
             pending_drop = True
             continue
-        if segments and not pending_drop and w["start"] - segments[-1]["end"] <= MAX_SILENCE:
+        if segments and not pending_drop and w["start"] - segments[-1]["end"] <= cfg["max_word_gap"]:
             segments[-1]["end"] = w["end"]
             segments[-1]["words"].append(w["word"])
         else:
@@ -185,8 +224,8 @@ def build_intervals(words: list[dict], duration: float,
     drop_spans = [(w["start"], w["end"]) for w in words if not w["keep"]]
     out = []
     for seg in segments:
-        start = max(0.0, seg["start"] - PAD_BEFORE)
-        end = min(duration, seg["end"] + PAD_AFTER)
+        start = max(0.0, seg["start"] - cfg["pad_before"])
+        end = min(duration, seg["end"] + cfg["pad_after"])
         for ds, de in drop_spans:
             if de <= seg["start"]:
                 start = max(start, de)
@@ -203,7 +242,8 @@ def build_intervals(words: list[dict], duration: float,
             "reason": "speech",
         })
 
-    out = subtract_silences(out, silences, [w for w in words if w["keep"]])
+    out = subtract_silences(out, silences, [w for w in words if w["keep"]], cfg)
+    out = apply_edge_trims(out, cfg)
 
     removed = []
     dropped = [w for w in words if not w["keep"]]
@@ -216,7 +256,7 @@ def build_intervals(words: list[dict], duration: float,
         })
     cursor = 0.0
     for seg in out:
-        if seg["start"] - cursor > MAX_SILENCE:
+        if seg["start"] - cursor > cfg["max_word_gap"]:
             removed.append({
                 "start": round(cursor, 3),
                 "end": round(seg["start"], 3),
@@ -224,14 +264,15 @@ def build_intervals(words: list[dict], duration: float,
                 "text": "",
             })
         cursor = seg["end"]
-    if duration - cursor > MAX_SILENCE:
+    if duration - cursor > cfg["max_word_gap"]:
         removed.append({"start": round(cursor, 3), "end": round(duration, 3),
                         "reason": "silence", "text": ""})
     removed.sort(key=lambda r: r["start"])
     return out, removed
 
 
-def generate_cutlist(transcript: dict) -> dict:
+def generate_cutlist(transcript: dict, settings: dict | None = None) -> dict:
+    cfg = {**DEFAULTS, **(settings or {})}
     duration = transcript["source"]["duration"]
     words = flatten_words(transcript)
 
@@ -240,11 +281,12 @@ def generate_cutlist(transcript: dict) -> dict:
     remove_false_starts(words)
     remove_repetitions(words)
 
-    segments, removed = build_intervals(words, duration, transcript.get("silences", []))
+    segments, removed = build_intervals(words, duration, transcript.get("silences", []), cfg)
     kept_duration = sum(s["end"] - s["start"] for s in segments)
     return {
         "version": 1,
         "source": transcript["source"],
+        "settings": cfg,
         "segments": segments,
         "removed": removed,
         "stats": {
@@ -259,10 +301,24 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transcript", type=Path)
     parser.add_argument("-o", "--output", type=Path, default=Path("output/cutlist.json"))
+    parser.add_argument("--preset", choices=sorted(PRESETS),
+                        help="conjunto de valores pronto (ex.: seco = jump cut agressivo)")
+    parser.add_argument("--trim-start", type=float, default=None,
+                        help="segundos cortados DENTRO da fala no início de cada segmento")
+    parser.add_argument("--trim-end", type=float, default=None,
+                        help="segundos cortados DENTRO da fala no fim de cada segmento")
+    parser.add_argument("--max-word-gap", type=float, default=None,
+                        help="gap entre palavras (s) acima do qual vira corte")
     args = parser.parse_args()
 
+    settings = dict(PRESETS[args.preset]) if args.preset else {}
+    for key in ("trim_start", "trim_end", "max_word_gap"):
+        value = getattr(args, key)
+        if value is not None:
+            settings[key] = value
+
     transcript = json.loads(args.transcript.read_text())
-    cutlist = generate_cutlist(transcript)
+    cutlist = generate_cutlist(transcript, settings)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(cutlist, ensure_ascii=False, indent=2))

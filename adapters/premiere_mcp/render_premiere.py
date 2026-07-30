@@ -175,7 +175,7 @@ def build_batch(cutlist: dict, item_id: str) -> list[dict]:
 
 
 def render(video: Path, cutlist: dict, project_dir: Path, project_name: str,
-           sequence_name: str, timeout: float) -> None:
+           sequence_name: str, timeout: float, use_open_project: bool = False) -> None:
     client = MCPStdioClient(
         ["node", str(SERVER_ENTRY)],
         env={"PREMIERE_TEMP_DIR": BRIDGE_TEMP_DIR},
@@ -183,9 +183,13 @@ def render(video: Path, cutlist: dict, project_dir: Path, project_name: str,
     )
     client.start()
     try:
-        print(f"criando projeto {project_name} em {project_dir}...")
-        client.call_tool("create_project", {"name": project_name,
-                                            "location": str(project_dir)})
+        if use_open_project:
+            info = client.call_tool("get_project_info", {})
+            print(f"usando projeto já aberto: {info.get('name')}")
+        else:
+            print(f"criando projeto {project_name} em {project_dir}...")
+            client.call_tool("create_project", {"name": project_name,
+                                                "location": str(project_dir)})
 
         print(f"importando {video.name}...")
         imported = client.call_tool("import_media", {"filePath": str(video.resolve())})
@@ -196,14 +200,25 @@ def render(video: Path, cutlist: dict, project_dir: Path, project_name: str,
         if not item_id:
             raise MCPError("não achei o project item do vídeo importado")
 
-        print(f"criando sequência {sequence_name}...")
-        seq = client.call_tool("create_sequence", {"name": sequence_name})
+        # NUNCA usar a tool create_sequence: com preset vazio ela chama
+        # app.project.createNewSequence(name, "") e o Premiere abre o diálogo
+        # modal "New Sequence", travando TODO o scripting até fechá-lo na mão.
+        # Caminho sem diálogo: sequência a partir do clipe (herda as specs do
+        # footage) -> duplicata vazia -> apaga a temporária.
+        print(f"criando sequência {sequence_name} (via clipe, sem diálogo)...")
+        tmp = client.call_tool("create_sequence_from_clips",
+                               {"name": f"{sequence_name}_tmp",
+                                "projectItemIds": [str(item_id)]})
+        tmp_id = find_key(tmp, "sequenceId", "sequenceID")
+        if not tmp_id:
+            raise MCPError("create_sequence_from_clips não retornou sequenceId")
+        seq = client.call_tool("duplicate_sequence",
+                               {"sequenceId": str(tmp_id), "newName": sequence_name,
+                                "clearContents": True})
         seq_id = find_key(seq, "sequenceId", "sequenceID")
         if not seq_id:
-            seqs = client.call_tool("list_sequences", {})
-            seq_id = find_key(seqs, "sequenceId", "sequenceID", "id")
-        if not seq_id:
-            raise MCPError("não achei o id da sequência criada")
+            raise MCPError("duplicate_sequence não retornou sequenceId")
+        client.call_tool("delete_sequence", {"sequenceId": str(tmp_id)})
 
         clips = build_batch(cutlist, str(item_id))
         print(f"montando {len(clips)} segmentos na timeline...")
@@ -234,6 +249,8 @@ def main() -> None:
     parser.add_argument("--sequence-name", default="rough_cut")
     parser.add_argument("--timeout", type=float, default=120.0,
                         help="segundos de espera por resposta de cada tool")
+    parser.add_argument("--use-open-project", action="store_true",
+                        help="usa o projeto já aberto no Premiere em vez de criar um novo")
     parser.add_argument("--dry-run", action="store_true",
                         help="só mostra as chamadas planejadas, sem tocar no Premiere")
     args = parser.parse_args()
@@ -262,7 +279,7 @@ def main() -> None:
         return
 
     render(args.video, cutlist, args.project_dir, args.project_name,
-           args.sequence_name, args.timeout)
+           args.sequence_name, args.timeout, args.use_open_project)
 
 
 if __name__ == "__main__":

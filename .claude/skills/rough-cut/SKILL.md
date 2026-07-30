@@ -48,6 +48,12 @@ Dado um vídeo bruto `<video>`:
    2 passadas + hard limiter; alvos I=-14 LUFS / TP=-1.5 dBTP / LRA=7). Alvos de
    loudness são estilo do canal: mudam em `styles/seco.json`, nunca no código.
 
+   A cor também é padrão do canal (seção `color` do style): LUT opcional (só
+   quando o footage vier em D-Log M — o Pocket 3 em perfil Normal NÃO leva LUT)
+   + ajustes pós (exposure/contrast/saturation). **Cor é SÓ para footage de
+   câmera** (`scope: camera`) — motion graphics nunca recebem tratamento de cor.
+   Desligar com --no-color.
+
    **(b) timeline no Premiere Pro (MCP)** — requer Premiere aberto com o painel
    `MCP Bridge (CEP)` iniciado (setup único: adapters/premiere_mcp/README.md):
    ```bash

@@ -16,7 +16,8 @@ from pathlib import Path
 
 FFMPEG = "/opt/homebrew/bin/ffmpeg"
 FFPROBE = "/opt/homebrew/bin/ffprobe"
-STYLES_DIR = Path(__file__).resolve().parent.parent / "styles"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+STYLES_DIR = PROJECT_ROOT / "styles"
 
 
 def load_style(style_name: str) -> dict:
@@ -32,6 +33,33 @@ def pick_platform(style: dict, platform: str) -> dict:
         sys.exit(f"plataforma '{platform}' não existe no style "
                  f"(disponíveis: {', '.join(sorted(platforms))})")
     return platforms[platform]
+
+
+def build_color_chain(color_cfg: dict) -> str:
+    """Cadeia de cor a partir do style: LUT (se configurada) + ajustes pós.
+
+    scope=camera: só footage de câmera recebe tratamento — motion graphics
+    nunca passam por aqui (o composer futuro usa este flag para rotear).
+    """
+    parts = []
+    lut = color_cfg.get("lut")
+    if lut:
+        lut_path = Path(lut)
+        if not lut_path.is_absolute():
+            lut_path = PROJECT_ROOT / lut_path
+        if not lut_path.exists():
+            sys.exit(f"LUT configurada no style não encontrada: {lut_path}")
+        parts.append(f"lut3d=file={lut_path}")
+    adjust = color_cfg.get("adjust", {})
+    ev = adjust.get("exposure_ev", 0.0)
+    if ev:
+        parts.append(f"exposure=exposure={ev}")
+    eq = [f"{key}={adjust[src]}" for key, src in
+          (("contrast", "contrast"), ("saturation", "saturation"), ("gamma", "gamma"))
+          if adjust.get(src, 1.0) != 1.0]
+    if eq:
+        parts.append("eq=" + ":".join(eq))
+    return ",".join(parts)
 
 
 def build_audio_chain(audio_cfg: dict, measured: dict | None) -> str:
@@ -163,7 +191,7 @@ def build_filter(segments: list[dict], video_idx: int, audio_idx: int | None) ->
 
 def render(video: Path, cutlist: dict, output: Path,
            platform: dict | None = None, x_offset: int = 0,
-           audio_cfg: dict | None = None) -> None:
+           audio_cfg: dict | None = None, color_cfg: dict | None = None) -> None:
     segments = cutlist["segments"]
     if not segments:
         sys.exit("cut-list sem segmentos: nada a renderizar")
@@ -173,9 +201,14 @@ def render(video: Path, cutlist: dict, output: Path,
     audio = audio_idx is not None
 
     map_video = "[v]"
+    if color_cfg:
+        chain = build_color_chain(color_cfg)
+        if chain:
+            filter_graph += f";\n{map_video}{chain}[vc]"
+            map_video = "[vc]"
     if platform and platform.get("transform") != "none" and "width" in platform:
         src_w, src_h = probe_resolution(video, video_idx)
-        filter_graph += f";\n[v]{vertical_filter(src_w, src_h, platform, x_offset)}[vf]"
+        filter_graph += f";\n{map_video}{vertical_filter(src_w, src_h, platform, x_offset)}[vf]"
         map_video = "[vf]"
 
     map_audio = "[a]"
@@ -219,6 +252,8 @@ def main() -> None:
                              "sobrepõe o crop_x_offset do style")
     parser.add_argument("--no-audio-norm", action="store_true",
                         help="não aplica a cadeia de áudio do style (loudnorm+limiter)")
+    parser.add_argument("--no-color", action="store_true",
+                        help="não aplica a cadeia de cor do style (LUT+ajustes)")
     args = parser.parse_args()
 
     if not args.video.exists():
@@ -233,9 +268,10 @@ def main() -> None:
     if x_offset is None:
         x_offset = platform.get("crop_x_offset", 0) if platform else 0
     audio_cfg = None if args.no_audio_norm else style.get("audio")
+    color_cfg = None if args.no_color else style.get("color")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    render(args.video, cutlist, args.output, platform, x_offset, audio_cfg)
+    render(args.video, cutlist, args.output, platform, x_offset, audio_cfg, color_cfg)
 
     stats = cutlist.get("stats", {})
     print(f"rough cut salvo em {args.output} "

@@ -135,3 +135,7 @@ tests/          testes
 
 - Fase 2: presets de áudio (amplify + hard limiter), adjustment layers, grain, transições.
 - Fase 3: integração MotionSkills + variantes 16:9 (YouTube) e 9:16 (Instagram/TikTok).
+
+# Cor (Fase 2 bloco 2)
+
+Seção `color` do style: LUT opcional (`lut3d`, só para footage D-Log M; o Pocket 3 em perfil Normal não usa) + ajustes pós via `exposure`/`eq`. Aplicada apenas a footage de câmera (`scope: camera`) — motion graphics nunca passam pela cadeia de cor. `--no-color` desliga. Previews lado a lado: ver `~/Downloads/color_preview/`.

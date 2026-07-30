@@ -27,6 +27,16 @@ e não há medição de loudness pelo Premiere (sem leitura de RMS/LUFS no
 ExtendScript; o `detect_silence` do próprio MCP já usa ffmpeg por isso).
 O caminho ffmpeg continua sendo o de precisão para loudness.
 
+## Cor via MCP (investigado 2026-07-30, não implementado)
+
+O servidor expõe `apply_lut` (clipId, lutPath absoluto .cube/.3dl, intensity
+0-100) e `color_correct` (brightness/contrast/saturation/hue/highlights/
+shadows/temperature/tint, escalas -100..100, por clipe). Não testados ao vivo —
+usam o mesmo mecanismo de componentes que o Hard Limiter (que funcionou), então
+a expectativa é positiva. Quando o caminho Premiere ganhar cor, mapear a seção
+`color` do style para esses dois calls, clipe a clipe (mesma limitação do áudio:
+não há efeito por track).
+
 Consome a cut-list JSON (contrato no README da raiz) e monta a timeline no
 Premiere Pro: cria projeto novo, importa o vídeo fonte, cria sequência e coloca
 um subclip `[start, end)` por segmento, na ordem, via `add_to_timeline_batch`.

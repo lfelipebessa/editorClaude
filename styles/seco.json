@@ -15,6 +15,17 @@
     "pad_after": 0.0,
     "min_segment": 0.2
   },
+  "color": {
+    "scope": "camera",
+    "lut": null,
+    "lut_note": "Footage atual do Osmo Pocket 3 é perfil Normal (Rec.709) — LUT não se aplica. Se gravar em D-Log M, baixar a LUT oficial 'D-Log M to Rec.709' em https://www.dji.com/downloads/softwares/osmo-pocket-3-dlog-to-rec709, salvar em assets/luts/ e apontar o campo lut para ela.",
+    "adjust": {
+      "exposure_ev": 0.05,
+      "contrast": 1.06,
+      "saturation": 1.16,
+      "gamma": 1.0
+    }
+  },
   "audio": {
     "target_i": -14.0,
     "target_tp": -1.5,

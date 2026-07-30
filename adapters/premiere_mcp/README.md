@@ -16,6 +16,17 @@
   bridge); use a duração da sequência em `list_sequences` para validação.
 - Re-importar o mesmo arquivo cria itens duplicados no projeto (inofensivo).
 
+## Efeitos de áudio via MCP (validado 2026-07-30)
+
+FUNCIONA em Premiere 26.3: `adjust_audio_levels` (ganho em dB no componente
+Volume do clipe) e `apply_effect` com `effectName: "Hard Limiter"` (inclusive
+com `parameters: {"Maximum Amplitude": ...}`). Demo aplicada na sequência
+`rough_cut_dji_v4_audio` do projeto de teste. Limitação: efeitos são por CLIPE
+(não por track), então normalizar uma timeline inteira = um call por clipe —
+e não há medição de loudness pelo Premiere (sem leitura de RMS/LUFS no
+ExtendScript; o `detect_silence` do próprio MCP já usa ffmpeg por isso).
+O caminho ffmpeg continua sendo o de precisão para loudness.
+
 Consome a cut-list JSON (contrato no README da raiz) e monta a timeline no
 Premiere Pro: cria projeto novo, importa o vídeo fonte, cria sequência e coloca
 um subclip `[start, end)` por segmento, na ordem, via `add_to_timeline_batch`.

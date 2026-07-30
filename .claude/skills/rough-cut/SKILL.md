@@ -44,6 +44,9 @@ Dado um vídeo bruto `<video>`:
    ```bash
    .venv/bin/python adapters/render_ffmpeg.py <video> output/cutlist_<slug>.json -o ~/Downloads/rough_cut_<slug>_vN.mp4
    ```
+   O áudio é normalizado automaticamente pela seção `audio` do style (loudnorm
+   2 passadas + hard limiter; alvos I=-14 LUFS / TP=-1.5 dBTP / LRA=7). Alvos de
+   loudness são estilo do canal: mudam em `styles/seco.json`, nunca no código.
 
    **(b) timeline no Premiere Pro (MCP)** — requer Premiere aberto com o painel
    `MCP Bridge (CEP)` iniciado (setup único: adapters/premiere_mcp/README.md):

@@ -58,6 +58,11 @@ python src/cutlist.py output/transcript.json --preset seco -o output/cutlist.jso
 #     ajuste o enquadramento com --crop-x-offset (px do vídeo fonte, + = direita)
 python adapters/render_ffmpeg.py video.mp4 output/cutlist.json --platform instagram -o output/rough_cut_vertical.mp4
 
+# Áudio: se o style tem a seção "audio", o render aplica automaticamente
+# loudnorm em duas passadas (medição + ganho linear) e hard limiter, com alvos
+# do style (seco: I=-14 LUFS, TP=-1.5 dBTP, LRA=7 — padrão de rede social para
+# fala). Desligar com --no-audio-norm.
+
 # 3. Renderizar rough cut
 python adapters/render_ffmpeg.py video.mp4 output/cutlist.json -o output/rough_cut.mp4
 ```

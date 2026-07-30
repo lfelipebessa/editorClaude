@@ -19,15 +19,83 @@ FFPROBE = "/opt/homebrew/bin/ffprobe"
 STYLES_DIR = Path(__file__).resolve().parent.parent / "styles"
 
 
-def load_platform(style_name: str, platform: str) -> dict:
+def load_style(style_name: str) -> dict:
     path = STYLES_DIR / f"{style_name}.json"
     if not path.exists():
         sys.exit(f"style não encontrado: {path}")
-    platforms = json.loads(path.read_text()).get("platforms", {})
+    return json.loads(path.read_text())
+
+
+def pick_platform(style: dict, platform: str) -> dict:
+    platforms = style.get("platforms", {})
     if platform not in platforms:
-        sys.exit(f"plataforma '{platform}' não existe no style '{style_name}' "
+        sys.exit(f"plataforma '{platform}' não existe no style "
                  f"(disponíveis: {', '.join(sorted(platforms))})")
     return platforms[platform]
+
+
+def build_audio_chain(audio_cfg: dict, measured: dict | None) -> str:
+    """Cadeia de áudio a partir do style: loudnorm (+ segunda passada se houver
+    medição) -> aresample -> hard limiter de segurança.
+
+    Duas passadas de loudnorm porque a passada única é imprecisa no loudness
+    integrado; com linear=true a segunda passada aplica ganho linear (sem
+    bombear a dinâmica da fala). O alimiter no fim só apara picos inter-sample
+    que sobrarem do encode.
+    """
+    ln = (f"loudnorm=I={audio_cfg['target_i']}:TP={audio_cfg['target_tp']}"
+          f":LRA={audio_cfg['target_lra']}")
+    if measured is None:
+        return ln + ":print_format=json"
+    ln += (f":measured_I={measured['input_i']}:measured_TP={measured['input_tp']}"
+           f":measured_LRA={measured['input_lra']}"
+           f":measured_thresh={measured['input_thresh']}"
+           f":offset={measured['target_offset']}:linear=true")
+    chain = [ln, "aresample=48000"]
+    limiter = audio_cfg.get("limiter", {})
+    if limiter.get("enabled"):
+        limit_lin = 10 ** (limiter.get("limit_db", -1.5) / 20)
+        # level=disabled é obrigatório: o default do alimiter re-normaliza a
+        # saída para 0dB depois de limitar, desfazendo teto e loudness
+        chain.append(f"alimiter=limit={limit_lin:.4f}"
+                     f":attack={limiter.get('attack_ms', 5)}"
+                     f":release={limiter.get('release_ms', 100)}"
+                     f":level=disabled")
+    return ",".join(chain)
+
+
+def parse_loudnorm_json(stderr: str) -> dict:
+    """Extrai o bloco JSON que o loudnorm imprime no fim do stderr."""
+    start = stderr.rfind("{")
+    end = stderr.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        sys.exit(f"loudnorm não imprimiu medição:\n{stderr[-800:]}")
+    return json.loads(stderr[start:end + 1])
+
+
+def measure_loudness(video: Path, segments: list[dict], audio_idx: int,
+                     audio_cfg: dict) -> dict:
+    """Passada 1: mede loudness do áudio já cortado (só decodifica áudio)."""
+    lines = []
+    for i, seg in enumerate(segments):
+        lines.append(f"[0:{audio_idx}]atrim=start={seg['start']}:end={seg['end']},"
+                     f"asetpts=PTS-STARTPTS[a{i}];")
+    inputs = "".join(f"[a{i}]" for i in range(len(segments)))
+    lines.append(f"{inputs}concat=n={len(segments)}:v=0:a=1[acat];")
+    lines.append(f"[acat]{build_audio_chain(audio_cfg, None)}[aout]")
+
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+        f.write("\n".join(lines))
+        script = f.name
+    result = subprocess.run(
+        [FFMPEG, "-i", str(video), "-filter_complex_script", script,
+         "-map", "[aout]", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    Path(script).unlink(missing_ok=True)
+    if result.returncode != 0:
+        sys.exit(f"medição de loudness falhou:\n{result.stderr[-800:]}")
+    return parse_loudnorm_json(result.stderr)
 
 
 def pick_streams(video: Path) -> tuple[int, int | None]:
@@ -94,7 +162,8 @@ def build_filter(segments: list[dict], video_idx: int, audio_idx: int | None) ->
 
 
 def render(video: Path, cutlist: dict, output: Path,
-           platform: dict | None = None, x_offset: int = 0) -> None:
+           platform: dict | None = None, x_offset: int = 0,
+           audio_cfg: dict | None = None) -> None:
     segments = cutlist["segments"]
     if not segments:
         sys.exit("cut-list sem segmentos: nada a renderizar")
@@ -109,6 +178,15 @@ def render(video: Path, cutlist: dict, output: Path,
         filter_graph += f";\n[v]{vertical_filter(src_w, src_h, platform, x_offset)}[vf]"
         map_video = "[vf]"
 
+    map_audio = "[a]"
+    if audio and audio_cfg:
+        print("medindo loudness do corte (passada 1)...")
+        measured = measure_loudness(video, segments, audio_idx, audio_cfg)
+        print(f"  antes: I={measured['input_i']} LUFS, TP={measured['input_tp']} dBTP, "
+              f"LRA={measured['input_lra']}")
+        filter_graph += f";\n[a]{build_audio_chain(audio_cfg, measured)}[af]"
+        map_audio = "[af]"
+
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         f.write(filter_graph)
         script = f.name
@@ -117,7 +195,7 @@ def render(video: Path, cutlist: dict, output: Path,
            "-filter_complex_script", script,
            "-map", map_video]
     if audio:
-        cmd += ["-map", "[a]", "-c:a", "aac", "-b:a", "192k"]
+        cmd += ["-map", map_audio, "-c:a", "aac", "-b:a", "192k"]
     cmd += ["-c:v", "libx264", "-crf", "18", "-preset", "fast",
             "-movflags", "+faststart", str(output)]
 
@@ -139,6 +217,8 @@ def main() -> None:
     parser.add_argument("--crop-x-offset", type=int, default=None,
                         help="desloca o crop central em pixels do vídeo fonte (+ = direita); "
                              "sobrepõe o crop_x_offset do style")
+    parser.add_argument("--no-audio-norm", action="store_true",
+                        help="não aplica a cadeia de áudio do style (loudnorm+limiter)")
     args = parser.parse_args()
 
     if not args.video.exists():
@@ -147,13 +227,15 @@ def main() -> None:
     if cutlist.get("version") != 1:
         sys.exit(f"versão de cut-list não suportada: {cutlist.get('version')}")
 
-    platform = load_platform(args.style, args.platform) if args.platform else None
+    style = load_style(args.style)
+    platform = pick_platform(style, args.platform) if args.platform else None
     x_offset = args.crop_x_offset
     if x_offset is None:
         x_offset = platform.get("crop_x_offset", 0) if platform else 0
+    audio_cfg = None if args.no_audio_norm else style.get("audio")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    render(args.video, cutlist, args.output, platform, x_offset)
+    render(args.video, cutlist, args.output, platform, x_offset, audio_cfg)
 
     stats = cutlist.get("stats", {})
     print(f"rough cut salvo em {args.output} "

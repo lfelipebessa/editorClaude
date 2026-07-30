@@ -10,8 +10,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "adapters"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "adapters" / "premiere_mcp"))
 
 from render_ffmpeg import load_style
-from render_premiere import (build_lumetri_jsx, lumetri_from_style,
-                             noise_from_style, parse_tool_payload)
+from render_premiere import (build_copy_effects_jsx, build_lumetri_jsx,
+                             lumetri_from_style, noise_from_style,
+                             parse_tool_payload)
 
 
 def test_lumetri_from_style_seco():
@@ -77,6 +78,18 @@ def test_jsx_reuses_existing_lumetri_instead_of_stacking():
     assert '=== "Lumetri Color"' in jsx and "addVideoEffect" in jsx
     assert jsx.index('=== "Lumetri Color"') < jsx.rindex("addVideoEffect"), \
         "devia procurar Lumetri existente antes de adicionar outro"
+
+
+def test_copy_jsx_copies_by_index_not_by_name():
+    # curvas/HSL vivem em blobs e propriedades sem nome (displayName vazio ou
+    # duplicado) — cópia por displayName corrompe; por índice preserva tudo
+    jsx = build_copy_effects_jsx(["Lumetri Color", "Noise"])
+    assert "properties[j].getValue()" in jsx or ".properties[j]" in jsx, jsx
+    assert '"Lumetri Color"' in jsx and '"Noise"' in jsx
+    assert "sourceIdx" in jsx and "JSON.stringify" in jsx
+    # cores empacotadas em 64-bit (pickers) perdem precisão no ExtendScript e
+    # viram lixo no setValue — a cópia precisa pular números acima de 2^32
+    assert "4294967295" in jsx, "faltou guard contra números 64-bit imprecisos"
 
 
 def test_parse_tool_payload_survives_non_dict_json():

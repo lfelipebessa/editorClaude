@@ -251,6 +251,59 @@ def build_lumetri_jsx(params: dict, track_index: int = 0,
     """
 
 
+def build_copy_effects_jsx(effect_names: list[str], track_index: int = 0,
+                           source_idx: int = 0) -> str:
+    """ExtendScript que copia efeitos do clipe sourceIdx para os demais da
+    track, propriedade a propriedade POR ÍNDICE (não por displayName).
+
+    Curvas RGB, HSL e afins do Lumetri vivem em blobs e propriedades com
+    displayName vazio/duplicado — cópia por nome (copy_effects_between_clips
+    do vendor) acerta a propriedade errada; por índice o layout é idêntico
+    entre instâncias do mesmo efeito e tudo é preservado. Propriedades
+    read-only falham no setValue e são puladas (try/catch).
+    """
+    names = json.dumps(effect_names)
+    return f"""
+      var seq = app.project.activeSequence;
+      if (!seq) return JSON.stringify({{success: false, error: "sem sequência ativa"}});
+      var track = seq.videoTracks[{track_index}];
+      var clips = track.clips;
+      if (clips.numItems < 2) return JSON.stringify({{success: false, error: "menos de 2 clipes"}});
+      var names = {names};
+      var sourceIdx = {source_idx};
+      var source = clips[sourceIdx];
+      function findComp(clip, name) {{
+        for (var k = 0; k < clip.components.numItems; k++) {{
+          if (String(clip.components[k].displayName) === name) return clip.components[k];
+        }}
+        return null;
+      }}
+      var copied = 0, skippedClips = 0, missing = [];
+      for (var n = 0; n < names.length; n++) {{
+        var srcComp = findComp(source, names[n]);
+        if (!srcComp) {{ missing.push(names[n]); continue; }}
+        var values = [];
+        for (var j = 0; j < srcComp.properties.numItems; j++) {{
+          try {{ values.push(srcComp.properties[j].getValue()); }}
+          catch (eG) {{ values.push(null); }}
+        }}
+        for (var c = 0; c < clips.numItems; c++) {{
+          if (c === sourceIdx) continue;
+          var dstComp = findComp(clips[c], names[n]);
+          if (!dstComp) {{ skippedClips++; continue; }}
+          for (var j = 0; j < dstComp.properties.numItems && j < values.length; j++) {{
+            if (values[j] === null) continue;
+            if (typeof values[j] === "number" && values[j] > 4294967295) continue;
+            try {{ dstComp.properties[j].setValue(values[j], true); copied++; }}
+            catch (eS) {{}}
+          }}
+        }}
+      }}
+      return JSON.stringify({{success: true, copied: copied,
+                              skippedClips: skippedClips, missing: missing}});
+    """
+
+
 def find_key(obj, *keys):
     """Procura a primeira ocorrência de qualquer das chaves, em qualquer nível."""
     if isinstance(obj, dict):

@@ -78,6 +78,47 @@ def build_color_chain(color_cfg: dict) -> str:
     return ",".join(parts)
 
 
+def music_gain_db(music_cfg: dict, measured_i: float) -> float:
+    """Ganho (dB) para a música cair no nível de bed do style. As músicas do
+    canal variam ~6 dB entre si — o ganho é calculado da medição, nunca fixo."""
+    return round(music_cfg.get("bed_lufs", -36.0) - measured_i, 2)
+
+
+def build_music_chain(music_cfg: dict, total: float, measured_i: float) -> str:
+    """Cadeia da música de fundo (aplicada ao input próprio da música; o input
+    entra com -stream_loop -1 -t <total>: loopa se curta, corta se longa).
+    Mix final: amix com duration=first e normalize=0 (o bed não pode mexer no
+    nível da voz já normalizada)."""
+    parts = [f"volume={music_gain_db(music_cfg, measured_i)}dB",
+             "aresample=48000"]
+    fade = music_cfg.get("fade_out", 1.5)
+    if fade:
+        parts.append(f"afade=t=out:st={round(max(0.0, total - fade), 3)}:d={fade}")
+    return ",".join(parts)
+
+
+def resolve_music_file(music_cfg: dict, name: str | None) -> Path:
+    """None -> música default do canal; nome -> assets/music/<nome>.m4a;
+    caminho existente -> usado como veio."""
+    if name and Path(name).expanduser().exists():
+        return Path(name).expanduser()
+    chosen = name or music_cfg.get("default", "")
+    path = PROJECT_ROOT / music_cfg.get("dir", "assets/music") / f"{chosen}.m4a"
+    if not path.exists():
+        sys.exit(f"música não encontrada: {path} (biblioteca: "
+                 f"{sorted(p.stem for p in path.parent.glob('*.m4a'))})")
+    return path
+
+
+def measure_music_loudness(music: Path) -> float:
+    """LUFS integrado da música (uma passada loudnorm, rápida)."""
+    result = subprocess.run(
+        [FFMPEG, "-hide_banner", "-i", str(music),
+         "-af", "loudnorm=print_format=json", "-f", "null", "-"],
+        capture_output=True, text=True)
+    return float(parse_loudnorm_json(result.stderr)["input_i"])
+
+
 def build_finish_chain(color_cfg: dict) -> str:
     """Acabamento pós-scale: nitidez (unsharp só no luma) + grain (noise só no
     luma, temporal). Roda DEPOIS do resize da plataforma — quantidades são

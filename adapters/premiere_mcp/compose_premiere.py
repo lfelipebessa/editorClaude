@@ -28,6 +28,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from render_premiere import (BRIDGE_TEMP_DIR, SERVER_ENTRY, MCPError,
                              MCPStdioClient, build_batch, find_key)
 
+from render_ffmpeg import (load_style, measure_music_loudness,  # noqa: E402
+                           music_gain_db, resolve_music_file)
+
 
 # Enquadramento padrão do canal (aprovado pelo usuário em 2026-07-30, validado
 # ao vivo na reel_plugin_admin): zoom sobre o fill da metade de baixo com a
@@ -137,8 +140,45 @@ def import_item(client: MCPStdioClient, path: Path) -> str:
     return str(item_id)
 
 
+def add_music(client: MCPStdioClient, seq_id: str, music_file: Path,
+              music_cfg: dict, total: float) -> float:
+    """Música de fundo em A2 (trackIndex 1 — A1 é o áudio da câmera): importa,
+    coloca em t=0 cortada no fim do vídeo e aplica o ganho calculado da
+    medição (bed_lufs do style). Fade out fica manual — keyframe de volume
+    por script é frágil; o ganho é o que importa para o padrão."""
+    measured_i = measure_music_loudness(music_file)
+    gain = music_gain_db(music_cfg, measured_i)
+    mus_id = import_item(client, music_file)
+    result = client.call_tool("add_to_timeline_batch",
+                              {"sequenceId": str(seq_id),
+                               "clips": [{"projectItemId": mus_id,
+                                          "trackIndex": 1, "time": 0,
+                                          "sourceInPoint": 0,
+                                          "sourceOutPoint": total}]})
+    if find_key(result, "status") == "failure":
+        raise MCPError(f"colocar música falhou: {result}")
+    st = client.call_tool("get_sequence_structure", {"sequenceId": str(seq_id)})
+    audio_tracks = find_key(st, "audioTracks") or []
+    clip_id = None
+    for track in audio_tracks:
+        for clip in track.get("clips", []):
+            if music_file.stem in str(clip.get("name", "")):
+                clip_id = clip.get("nodeId") or clip.get("clipId")
+                break
+        if clip_id:
+            break
+    if not clip_id:
+        raise MCPError("clipe da música não localizado na sequência")
+    client.call_tool("adjust_audio_levels", {"clipId": str(clip_id),
+                                             "level": gain})
+    print(f"música: {music_file.name} ({measured_i} LUFS, ganho {gain} dB)")
+    return gain
+
+
 def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
-            sequence_name: str, timeout: float) -> None:
+            sequence_name: str, timeout: float,
+            music_file: Path | None = None,
+            music_cfg: dict | None = None) -> None:
     segments = cutlist["segments"]
     total = round(sum(s["end"] - s["start"] for s in segments), 3)
     scenes = manifest["scenes"]
@@ -241,6 +281,9 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
                              {"sequenceId": str(seq_id),
                               "projectItemId": srt_id})
 
+        if music_file and music_cfg:
+            add_music(client, str(seq_id), music_file, music_cfg, total)
+
         client.call_tool("save_project", {})
         print(f"sequência '{sequence_name}' montada: {len(mg_clips)} motions + "
               f"{len(cam_clips)} cortes + captions (~{total:.1f}s). Projeto salvo.")
@@ -259,6 +302,11 @@ def main() -> None:
     parser.add_argument("--srt", type=Path, default=None)
     parser.add_argument("--sequence-name", default="reel_composto")
     parser.add_argument("--timeout", type=float, default=120.0)
+    parser.add_argument("--style", default="seco")
+    parser.add_argument("--music", default=None,
+                        help="música da biblioteca assets/music (nome sem "
+                             "extensão) ou caminho; default = a do style")
+    parser.add_argument("--no-music", action="store_true")
     args = parser.parse_args()
 
     for p in (args.video, args.cutlist, args.manifest):
@@ -272,8 +320,13 @@ def main() -> None:
         if not Path(sc["clip"]).exists():
             sys.exit(f"clipe de motion não encontrado: {sc['clip']}")
 
+    music_cfg = load_style(args.style).get("music")
+    music_file = None
+    if not args.no_music and music_cfg:
+        music_file = resolve_music_file(music_cfg, args.music)
+
     compose(args.video, cutlist, manifest, args.srt, args.sequence_name,
-            args.timeout)
+            args.timeout, music_file, music_cfg)
 
 
 if __name__ == "__main__":

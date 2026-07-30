@@ -9,7 +9,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "adapters"))
 
-from render_ffmpeg import build_audio_chain, load_style, parse_loudnorm_json
+from render_ffmpeg import (build_audio_chain, build_music_chain, load_style,
+                           music_gain_db, parse_loudnorm_json,
+                           resolve_music_file)
 
 AUDIO_CFG = {
     "target_i": -14.0,
@@ -58,6 +60,39 @@ def test_parse_loudnorm_json_from_stderr():
          "input_thresh": "-34.2", "target_offset": "0.4"}, indent=2)
     parsed = parse_loudnorm_json(stderr)
     assert parsed["input_i"] == "-23.47", parsed
+
+
+def test_music_gain_targets_bed_lufs():
+    # músicas do canal variam 6 dB entre si; o ganho sai da medição para o
+    # bed cair sempre no mesmo nível relativo à voz (-14 LUFS)
+    assert abs(music_gain_db({"bed_lufs": -36.0}, measured_i=-8.67)
+               - (-27.33)) < 0.01
+
+
+def test_music_chain_volume_and_fade():
+    cfg = {"bed_lufs": -36.0, "fade_out": 1.5}
+    chain = build_music_chain(cfg, total=57.5, measured_i=-8.5)
+    assert chain == "volume=-27.5dB,aresample=48000,afade=t=out:st=56.0:d=1.5", chain
+
+
+def test_music_chain_without_fade():
+    chain = build_music_chain({"bed_lufs": -36.0, "fade_out": 0}, 30.0, -10.0)
+    assert "afade" not in chain and "volume=-26.0dB" in chain
+
+
+def test_resolve_music_file_default_and_named():
+    cfg = {"default": "musicafundo3", "dir": "assets/music"}
+    p = resolve_music_file(cfg, None)
+    assert p.name == "musicafundo3.m4a" and p.exists(), p
+    p2 = resolve_music_file(cfg, "musicafundo2")
+    assert p2.name == "musicafundo2.m4a" and p2.exists(), p2
+
+
+def test_style_seco_has_music():
+    music = load_style("seco").get("music")
+    assert music, "styles/seco.json sem seção music"
+    assert music["default"] == "musicafundo3"
+    assert music["bed_lufs"] <= -30, "bed alto demais vira briga com a voz"
 
 
 def main():

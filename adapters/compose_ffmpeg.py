@@ -23,8 +23,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from render_ffmpeg import (FFMPEG, build_audio_chain, build_color_chain,
-                           build_filter, build_finish_chain, load_style,
-                           measure_loudness, pick_streams, probe_resolution)
+                           build_filter, build_finish_chain, build_music_chain,
+                           load_style, measure_loudness, measure_music_loudness,
+                           pick_streams, probe_resolution, resolve_music_file)
 
 from compose import parse_srt
 
@@ -112,7 +113,7 @@ def build_caption_overlays(chunks: list[dict], first_idx: int,
 
 def compose(video: Path, cutlist: dict, manifest: dict, output: Path,
             style: dict, srt: Path | None, x_offset: int,
-            no_color: bool) -> None:
+            no_color: bool, music_file: Path | None = None) -> None:
     segments = cutlist["segments"]
     total = round(sum(s["end"] - s["start"] for s in segments), 3)
     scenes = manifest["scenes"]
@@ -149,6 +150,15 @@ def compose(video: Path, cutlist: dict, manifest: dict, output: Path,
     print("medindo loudness do corte (passada 1)...")
     measured = measure_loudness(video, segments, audio_idx, style["audio"])
     graph.append(f"[a]{build_audio_chain(style['audio'], measured)}[af]")
+    map_audio = "[af]"
+    if music_file:
+        music_i = measure_music_loudness(music_file)
+        music_idx = 1 + len(scenes) + len(cap_paths)
+        graph.append(f"[{music_idx}:a]"
+                     f"{build_music_chain(style['music'], total, music_i)}[mus]")
+        graph.append("[af][mus]amix=inputs=2:duration=first:normalize=0[aout]")
+        map_audio = "[aout]"
+        print(f"música de fundo: {music_file.name} ({music_i} LUFS -> bed)")
 
     filter_graph = ";\n".join(graph)
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
@@ -160,8 +170,10 @@ def compose(video: Path, cutlist: dict, manifest: dict, output: Path,
         cmd += [*flags, "-i", sc["clip"]]
     for path in cap_paths:
         cmd += ["-loop", "1", "-t", str(total), "-i", str(path)]
+    if music_file:
+        cmd += ["-stream_loop", "-1", "-t", str(total), "-i", str(music_file)]
     cmd += ["-filter_complex_script", script,
-            "-map", label, "-map", "[af]",
+            "-map", label, "-map", map_audio,
             "-c:v", "libx264", "-crf", "18", "-preset", "fast", "-r", str(fps),
             "-c:a", "aac", "-b:a", "192k",
             "-movflags", "+faststart", str(output)]
@@ -185,6 +197,10 @@ def main() -> None:
                         help="SRT editável para queimar na divisa (opcional)")
     parser.add_argument("--crop-x-offset", type=int, default=0)
     parser.add_argument("--no-color", action="store_true")
+    parser.add_argument("--music", default=None,
+                        help="música da biblioteca assets/music (nome sem "
+                             "extensão) ou caminho; default = a do style")
+    parser.add_argument("--no-music", action="store_true")
     args = parser.parse_args()
 
     for p in (args.video, args.cutlist, args.manifest):
@@ -198,8 +214,12 @@ def main() -> None:
     if args.srt and not args.srt.exists():
         sys.exit(f"SRT não encontrado: {args.srt}")
 
-    compose(args.video, cutlist, manifest, args.output, load_style(args.style),
-            args.srt, args.crop_x_offset, args.no_color)
+    style = load_style(args.style)
+    music_file = None
+    if not args.no_music and style.get("music"):
+        music_file = resolve_music_file(style["music"], args.music)
+    compose(args.video, cutlist, manifest, args.output, style,
+            args.srt, args.crop_x_offset, args.no_color, music_file)
 
 
 if __name__ == "__main__":

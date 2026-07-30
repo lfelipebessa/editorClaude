@@ -72,5 +72,11 @@
     "max_words": 3,
     "max_gap": 0.6,
     "uppercase": true
+  },
+  "music": {
+    "default": "musicafundo3",
+    "dir": "assets/music",
+    "bed_lufs": -36.0,
+    "fade_out": 1.5
   }
 }

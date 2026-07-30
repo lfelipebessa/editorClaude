@@ -90,6 +90,15 @@ Dado um vídeo bruto `<video>`:
    O mp4 automático (compose_ffmpeg, mesmos argumentos + `-o ~/Downloads/
    reel_<slug>.mp4`) NÃO roda por padrão — só quando o usuário pedir preview
    rápido ou publicação direta sem ajustes.
+
+   **Música de fundo é padrão** (seção `music` do style): entra automática nos
+   dois composers — `musicafundo3` da biblioteca `assets/music/`, ganho
+   calculado por medição para o bed cair em `bed_lufs` (-36 LUFS ≈ 22 dB
+   abaixo da voz). Trocar: `--music <nome>` (meAndTheD, musicafundo,
+   musicafundo2); desligar: `--no-music`. Música nova = jogar o arquivo em
+   `assets/music/*.m4a` (extrair de mp4: `ffmpeg -i in.mp4 -vn -c:a copy
+   out.m4a`) — o ganho se autocalibra pela medição. No Premiere ela entra em
+   A2 cortada no fim do vídeo com o ganho no clipe (fade out manual, se quiser).
    Após o compose_premiere, aplicar a grade nos clipes de V2 (track_index=1)
    com build_lumetri_jsx + noise_from_style. O enquadramento padrão da câmera
    (cabeça quase encostando na divisa: Scale 58, Position [0.58, 0.6825] +

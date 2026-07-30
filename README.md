@@ -41,6 +41,18 @@ python src/cutlist.py output/transcript.json --preset seco -o output/cutlist.jso
 # ou ajuste fino: --trim-start 0.07 --trim-end 0.12 --max-word-gap 0.25
 #   trim-start/trim-end: segundos cortados DENTRO da fala nas bordas de cada segmento
 #   max-word-gap: pausa entre palavras acima da qual vira corte (default 0.8s)
+#
+# O trim de borda é adaptativo à duração do segmento (valores no style):
+#   duração < trim_min_duration  -> trim zero (palavra curta isolada sai intacta)
+#   cada borda perde no máximo trim_max_fraction da duração do segmento
+#   segmentos longos             -> trim_start/trim_end na íntegra
+#
+# Presets vivem em styles/<nome>.json (fonte única de verdade, versionada).
+# styles/seco.json também define as plataformas de saída (16:9 / 9:16).
+
+# 3b. Variante vertical 9:16 (Instagram/TikTok): crop central definido no style,
+#     ajuste o enquadramento com --crop-x-offset (px do vídeo fonte, + = direita)
+python adapters/render_ffmpeg.py video.mp4 output/cutlist.json --platform instagram -o output/rough_cut_vertical.mp4
 
 # 3. Renderizar rough cut
 python adapters/render_ffmpeg.py video.mp4 output/cutlist.json -o output/rough_cut.mp4

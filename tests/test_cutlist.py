@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from cutlist import generate_cutlist
+from cutlist import generate_cutlist, load_style
 
 
 def make_transcript(words, duration=None, silences=None):
@@ -170,6 +170,62 @@ def test_clean_speech_untouched():
     c = generate_cutlist(t)
     assert len(c["segments"]) == 1
     assert not [r for r in c["removed"] if r["reason"] != "silence"], c["removed"]
+
+
+def test_adaptive_trim_spares_short_word():
+    cut = load_style("seco")["cut"]
+    t = make_transcript([("oi", 1.0, 1.5)])   # palavra única de 0.5s
+    c = generate_cutlist(t, cut)
+    seg = c["segments"][0]
+    assert seg["start"] == 1.0 and seg["end"] == 1.5, \
+        f"segmento de 0.5s não pode perder nada: {seg}"
+
+
+def test_adaptive_trim_full_on_long_segment():
+    cut = load_style("seco")["cut"]
+    words = [(f"palavra{i}", 1.0 + i * 0.5, 1.0 + i * 0.5 + 0.4) for i in range(19)]
+    t = make_transcript(words)                # segmento de 1.0 a 10.4 (9.4s)
+    c = generate_cutlist(t, cut)
+    seg = c["segments"][0]
+    assert abs(seg["start"] - (1.0 + cut["trim_start"])) < 0.001, seg
+    assert abs(seg["end"] - (10.4 - cut["trim_end"])) < 0.001, seg
+
+
+def test_adaptive_trim_capped_by_fraction():
+    cut = load_style("seco")["cut"]
+    t = make_transcript([("palavra", 1.0, 1.45), ("curta", 1.5, 1.9)])  # 0.9s
+    c = generate_cutlist(t, cut)
+    seg = c["segments"][0]
+    allowed = cut["trim_max_fraction"] * 0.9
+    assert abs(seg["end"] - (1.9 - allowed)) < 0.001, \
+        f"trim_end devia ser limitado a {allowed:.3f}s: {seg}"
+    assert abs(seg["start"] - (1.0 + cut["trim_start"])) < 0.001, seg
+
+
+def test_style_seco_loads_and_applies():
+    style = load_style("seco")
+    cut = style["cut"]
+    for key in ("trim_start", "trim_end", "trim_min_duration", "trim_max_fraction",
+                "max_word_gap", "pad_before", "pad_after", "min_segment"):
+        assert key in cut, f"styles/seco.json sem '{key}'"
+    assert style["language"] == "pt"
+    assert set(style["platforms"]) >= {"youtube", "instagram", "tiktok"}
+
+    t = make_transcript([("fala", 1.0, 1.5), ("aqui", 1.6, 2.2)])
+    c = generate_cutlist(t, cut)
+    seg = c["segments"][0]
+    assert abs(seg["start"] - (1.0 + cut["trim_start"])) < 0.001, seg
+    assert abs(seg["end"] - (2.2 - cut["trim_end"])) < 0.001, seg
+    assert c["settings"]["max_word_gap"] == cut["max_word_gap"]
+
+
+def test_unknown_style_fails_clearly():
+    try:
+        load_style("inexistente")
+    except SystemExit as e:
+        assert "inexistente" in str(e)
+    else:
+        raise AssertionError("load_style devia falhar para style inexistente")
 
 
 def main():

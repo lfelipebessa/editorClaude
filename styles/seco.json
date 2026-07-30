@@ -1,0 +1,35 @@
+{
+  "name": "seco",
+  "description": "Jump cut agressivo estilo rede social — padrão do canal. Ajustes de gosto editam ESTE arquivo, nunca o código.",
+  "language": "pt",
+  "cut": {
+    "trim_start": 0.07,
+    "trim_end": 0.12,
+    "trim_min_duration": 0.8,
+    "trim_max_fraction": 0.12,
+    "max_word_gap": 0.25,
+    "pad_before": 0.0,
+    "pad_after": 0.0,
+    "min_segment": 0.2
+  },
+  "platforms": {
+    "youtube": {
+      "aspect": "16:9",
+      "transform": "none"
+    },
+    "instagram": {
+      "aspect": "9:16",
+      "width": 1080,
+      "height": 1920,
+      "crop": "center",
+      "crop_x_offset": 0
+    },
+    "tiktok": {
+      "aspect": "9:16",
+      "width": 1080,
+      "height": 1920,
+      "crop": "center",
+      "crop_x_offset": 0
+    }
+  }
+}

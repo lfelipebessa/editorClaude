@@ -13,6 +13,7 @@ import argparse
 import difflib
 import json
 import string
+import sys
 from pathlib import Path
 
 MAX_SILENCE = 0.8       # pausa acima disso vira corte
@@ -30,19 +31,24 @@ DEFAULTS = {
     "pad_after": PAD_AFTER,
     "trim_start": 0.0,            # corta DENTRO da fala no início do segmento
     "trim_end": 0.0,              # corta DENTRO da fala no fim do segmento
+    "trim_min_duration": 0.8,     # segmento abaixo disso não recebe trim algum
+    "trim_max_fraction": 0.12,    # trim por borda limitado a esta fração da duração
+    "min_segment": MIN_SEGMENT,
 }
 
-PRESETS = {
-    # jump cut agressivo estilo rede social: sem respiro, invade a fala nas
-    # bordas e mata qualquer pausa perceptível entre palavras
-    "seco": {
-        "max_word_gap": 0.25,
-        "pad_before": 0.0,
-        "pad_after": 0.0,
-        "trim_start": 0.07,
-        "trim_end": 0.12,
-    },
-}
+# presets vivem em styles/<nome>.json — fonte única de verdade, versionada
+STYLES_DIR = Path(__file__).resolve().parent.parent / "styles"
+
+
+def load_style(name: str) -> dict:
+    path = STYLES_DIR / f"{name}.json"
+    if not path.exists():
+        available = ", ".join(sorted(p.stem for p in STYLES_DIR.glob("*.json"))) or "nenhum"
+        sys.exit(f"style '{name}' não encontrado em {STYLES_DIR} (disponíveis: {available})")
+    style = json.loads(path.read_text())
+    if "cut" not in style:
+        sys.exit(f"style '{name}' sem a seção 'cut': {path}")
+    return style
 
 _PUNCT = str.maketrans("", "", string.punctuation + "…—“”‘’")
 
@@ -183,18 +189,28 @@ def subtract_silences(segments: list[dict], silences: list[dict],
 
 
 def apply_edge_trims(segments: list[dict], cfg: dict) -> list[dict]:
-    """Trim negativo: invade a fala nas bordas de cada segmento (corte seco).
+    """Trim negativo adaptativo: invade a fala nas bordas de cada segmento.
 
-    Se o segmento ficaria menor que MIN_SEGMENT, mantém as bordas originais.
+    Trim fixo come palavras curtas isoladas inteiras, então a regra escala com
+    a duração do segmento:
+    - abaixo de trim_min_duration: nenhum trim (palavra única sai intacta);
+    - cada borda perde no máximo trim_max_fraction da duração;
+    - segmentos longos recebem trim_start/trim_end na íntegra.
+    Se mesmo assim ficaria menor que min_segment, mantém as bordas originais.
     """
     trim_start, trim_end = cfg["trim_start"], cfg["trim_end"]
     if trim_start <= 0 and trim_end <= 0:
         return segments
     out = []
     for seg in segments:
-        start = seg["start"] + trim_start
-        end = seg["end"] - trim_end
-        if end - start < MIN_SEGMENT:
+        duration = seg["end"] - seg["start"]
+        if duration < cfg["trim_min_duration"]:
+            out.append(seg)
+            continue
+        allowed = cfg["trim_max_fraction"] * duration
+        start = seg["start"] + min(trim_start, allowed)
+        end = seg["end"] - min(trim_end, allowed)
+        if end - start < cfg["min_segment"]:
             start, end = seg["start"], seg["end"]
         out.append({**seg, "start": round(start, 3), "end": round(end, 3)})
     return out
@@ -301,8 +317,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transcript", type=Path)
     parser.add_argument("-o", "--output", type=Path, default=Path("output/cutlist.json"))
-    parser.add_argument("--preset", choices=sorted(PRESETS),
-                        help="conjunto de valores pronto (ex.: seco = jump cut agressivo)")
+    parser.add_argument("--preset",
+                        help="nome de um style em styles/ (ex.: seco = jump cut agressivo)")
     parser.add_argument("--trim-start", type=float, default=None,
                         help="segundos cortados DENTRO da fala no início de cada segmento")
     parser.add_argument("--trim-end", type=float, default=None,
@@ -311,7 +327,7 @@ def main() -> None:
                         help="gap entre palavras (s) acima do qual vira corte")
     args = parser.parse_args()
 
-    settings = dict(PRESETS[args.preset]) if args.preset else {}
+    settings = dict(load_style(args.preset)["cut"]) if args.preset else {}
     for key in ("trim_start", "trim_end", "max_word_gap"):
         value = getattr(args, key)
         if value is not None:

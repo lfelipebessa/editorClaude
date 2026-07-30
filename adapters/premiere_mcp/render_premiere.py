@@ -226,7 +226,12 @@ def build_lumetri_jsx(params: dict, track_index: int = 0,
         var fx = name === "Lumetri Color" ? lumetri : qe.project.getVideoEffectByName(name);
         if (!fx) return null;
         qeItem.addVideoEffect(fx);
-        return domClip.components[domClip.components.numItems - 1];
+        // Premiere 26 nem sempre anexa no fim (Noise entra ANTES de um Lumetri
+        // já presente) — relocalizar pelo nome, nunca pela última posição.
+        for (var k2 = 0; k2 < domClip.components.numItems; k2++) {{
+          if (String(domClip.components[k2].displayName) === name) return domClip.components[k2];
+        }}
+        return null;
       }}
       var qeTrack = qeSeq.getVideoTrackAt({track_index});
       var domTrack = seq.videoTracks[{track_index}];
@@ -238,6 +243,7 @@ def build_lumetri_jsx(params: dict, track_index: int = 0,
         if (kind !== "Clip") continue;
         var domClip = domTrack.clips[clipIdx];
         var comp = ensureEffect(item, domClip, "Lumetri Color");
+        if (!comp) {{ clipIdx++; continue; }}
         var done = {{}};
         for (var j = 0; j < comp.properties.numItems; j++) {{
           var p = comp.properties[j];

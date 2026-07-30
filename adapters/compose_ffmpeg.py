@@ -93,15 +93,17 @@ def render_caption_images(chunks: list[dict], cfg: dict,
 
 
 def build_caption_overlays(chunks: list[dict], first_idx: int,
-                           y: int = 960) -> tuple[str, str]:
+                           y: int = 976) -> tuple[str, str]:
     """Cadeia de overlays: cada PNG aparece só na janela [start, end] da sua
-    legenda, centrado na divisa motion/câmera (y=960). Vírgulas do between()
-    escapadas — separador de filtro no graph script."""
+    legenda, apoiado na divisa motion/câmera — a borda inferior do PNG fica em
+    y, então o texto senta sobre a linha da divisa (fundo escuro do motion),
+    só encostando nela por baixo. Vírgulas do between() escapadas — separador
+    de filtro no graph script."""
     lines, label = [], "[stack]"
     for i, c in enumerate(chunks):
         out = f"[cap{i}]"
         lines.append(
-            f"{label}[{first_idx + i}:v]overlay=(W-w)/2:{y}-h/2:"
+            f"{label}[{first_idx + i}:v]overlay=(W-w)/2:{y}-h:"
             f"eof_action=pass:enable=between(t\\,{c['start']}\\,{c['end']})"
             f"{out};")
         label = out

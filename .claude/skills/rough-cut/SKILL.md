@@ -83,11 +83,13 @@ Dado um vídeo bruto `<video>`:
    .venv/bin/python src/prepare_compose.py output/transcript_<slug>.json output/cutlist_<slug>.json ~/development/MotionSkills/motion-graphics/src/videos/<nome>
    # 2. REVISAR o SRT contra o brief (transcrição erra: cloud->Claude,
    #    admira->ADMIN...) — corrigir SÓ texto, nunca timestamps
-   # 3. mp4 automático (preview/publicação):
-   .venv/bin/python adapters/compose_ffmpeg.py <video> output/cutlist_<slug>.json output/motion_manifest_<slug>.json --srt output/captions_<slug>.srt -o ~/Downloads/reel_<slug>.mp4
-   # 4. timeline editável no Premiere (fluxo de finalização do usuário):
+   # 3. timeline editável no Premiere — SAÍDA PADRÃO (o usuário sempre ajusta
+   #    antes de exportar; decisão de 2026-07-30):
    .venv/bin/python adapters/premiere_mcp/compose_premiere.py <video> output/cutlist_<slug>.json output/motion_manifest_<slug>.json --srt output/captions_<slug>.srt --sequence-name reel_<slug>
    ```
+   O mp4 automático (compose_ffmpeg, mesmos argumentos + `-o ~/Downloads/
+   reel_<slug>.mp4`) NÃO roda por padrão — só quando o usuário pedir preview
+   rápido ou publicação direta sem ajustes.
    Após o compose_premiere, aplicar a grade nos clipes de V2 (track_index=1)
    com build_lumetri_jsx + noise_from_style, e centralizar a câmera com
    build_motion_jsx (padrão validado: Scale 48, Position [0.57, 0.77] para

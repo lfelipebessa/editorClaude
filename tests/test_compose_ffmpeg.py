@@ -52,8 +52,9 @@ def test_caption_overlays_use_time_windows_at_seam():
     assert "[7:v]" in graph and "[8:v]" in graph
     assert "enable=between(t\\,0.0\\,0.5)" in graph, graph
     assert "enable=between(t\\,0.6\\,1.2)" in graph
-    # centrada na divisa das metades (y=960)
-    assert "overlay=(W-w)/2:960-h/2" in graph
+    # apoiada na divisa: borda inferior do PNG em y=976, texto sobre o fundo
+    # escuro do motion (mais legível que cavalgar a emenda das metades)
+    assert "overlay=(W-w)/2:976-h" in graph
     assert label == "[cap1]" and graph.rstrip().endswith("[cap1]"), (graph, label)
 
 

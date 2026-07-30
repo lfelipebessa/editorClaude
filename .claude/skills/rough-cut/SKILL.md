@@ -37,10 +37,20 @@ Dado um vídeo bruto `<video>`:
    .venv/bin/python src/cutlist.py output/transcript_<slug>.json --preset seco -o output/cutlist_<slug>.json
    ```
 
-3. **Render**:
+3. **Render** — duas saídas disponíveis; mp4 direto é o default, timeline no
+   Premiere quando o usuário pedir para continuar a edição lá:
+
+   **(a) mp4 direto (ffmpeg):**
    ```bash
    .venv/bin/python adapters/render_ffmpeg.py <video> output/cutlist_<slug>.json -o ~/Downloads/rough_cut_<slug>_vN.mp4
    ```
+
+   **(b) timeline no Premiere Pro (MCP)** — requer Premiere aberto com o painel
+   `MCP Bridge (CEP)` iniciado (setup único: adapters/premiere_mcp/README.md):
+   ```bash
+   .venv/bin/python adapters/premiere_mcp/render_premiere.py <video> output/cutlist_<slug>.json --project-name EditorClaude_<slug>
+   ```
+   Cria projeto NOVO — nunca tocar em projetos existentes do usuário.
    - `<slug>`: identificador curto derivado do nome do arquivo + data (ex.: `dji_20260729`).
    - `vN`: v1, v2... — nunca sobrescrever uma versão anterior; o usuário compara versões.
    - Variante vertical (Instagram/TikTok): adicionar `--platform instagram` (ou `tiktok`)

@@ -1,23 +1,44 @@
-# Adaptador Premiere Pro MCP (esqueleto)
+# Adaptador Premiere Pro MCP
 
-**Status: BLOQUEADO — o Adobe Premiere Pro não está instalado nesta máquina.**
-Nada deste diretório deve ser instalado ou executado até o Premiere existir aqui.
+**Status: implementado. Aguarda passos manuais do usuário no Premiere (uma vez).**
 
-## O que este adaptador fará
+Consome a cut-list JSON (contrato no README da raiz) e monta a timeline no
+Premiere Pro: cria projeto novo, importa o vídeo fonte, cria sequência e coloca
+um subclip `[start, end)` por segmento, na ordem, via `add_to_timeline_batch`.
+Mesmo contrato do adaptador ffmpeg — este adaptador não decide corte, só executa.
 
-Consumir a cut-list JSON (contrato no README da raiz) e montar uma sequência no
-Premiere Pro via MCP, com um clipe por segmento, na ordem da cut-list — em vez de
-renderizar um mp4 como o adaptador ffmpeg.
+## Arquitetura
 
-## Dependência externa
+```
+render_premiere.py ──MCP (JSON-RPC stdio)──▶ vendor/Adobe_Premiere_Pro_MCP (Node)
+                                                   │ arquivos em /tmp/premiere-mcp-bridge
+                                                   ▼
+                                     painel "MCP Bridge (CEP)" dentro do Premiere
+```
 
-- MCP server: <https://github.com/hetpatel-11/Adobe_Premiere_Pro_MCP>
-  (controla o Premiere via UXP/ExtendScript; requer Premiere Pro instalado e aberto)
+- MCP server: <https://github.com/hetpatel-11/Adobe_Premiere_Pro_MCP>, clonado em
+  `vendor/Adobe_Premiere_Pro_MCP` (gitignored; re-clonar + `npm install && npm run build`
+  se não existir).
+- Extensão CEP instalada em `~/Library/Application Support/Adobe/CEP/extensions/MCPBridgeCEP`
+  (CEP PlayerDebugMode já habilitado via `defaults write com.adobe.CSXS.*`).
+- Registro MCP de escopo de projeto em `.mcp.json` (server `premiere-pro`) — qualquer
+  agente do projeto ganha acesso às ~280 tools do servidor.
 
-## Plano de implementação (quando desbloquear)
+## Setup único no Premiere (manual, exige o app)
 
-1. Instalar o MCP server do repositório acima e registrá-lo no cliente MCP.
-2. `render_premiere.py`: ler a cut-list, criar projeto/sequência, importar o vídeo
-   original e inserir subclips `[start, end)` de cada segmento na timeline.
-3. Mesma interface de linha de comando do adaptador ffmpeg:
-   `python adapters/premiere_mcp/render_premiere.py video.mp4 cutlist.json`
+1. Salvar o trabalho e **reiniciar o Premiere Pro** (a extensão CEP carrega no start).
+2. (Recomendado pelo guia oficial) `Preferences > Plugins > UXP Plugins > Enable developer mode`.
+3. `Window > Extensions > MCP Bridge (CEP)`.
+4. `Temp Directory` = `/tmp/premiere-mcp-bridge` → `Save Configuration` → `Start Bridge`
+   → `Test Connection`.
+
+## Uso
+
+```bash
+.venv/bin/python adapters/premiere_mcp/render_premiere.py video.mp4 output/cutlist.json \
+    --project-name EditorClaude_teste --sequence-name rough_cut
+# --dry-run mostra o plano sem tocar no Premiere
+```
+
+Cria sempre projeto NOVO (default `~/Documents/EditorClaude_teste`) — nunca toca
+em projetos existentes.

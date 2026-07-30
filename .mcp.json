@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "premiere-pro": {
+      "command": "node",
+      "args": [
+        "/Users/luizfelipebessa/development/EditorClaude/vendor/Adobe_Premiere_Pro_MCP/dist/index.js"
+      ],
+      "env": {
+        "PREMIERE_TEMP_DIR": "/tmp/premiere-mcp-bridge"
+      }
+    }
+  }
+}

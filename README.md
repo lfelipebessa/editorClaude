@@ -138,4 +138,4 @@ tests/          testes
 
 # Cor (Fase 2 bloco 2)
 
-Seção `color` do style: LUT opcional (`lut3d`, só para footage D-Log M; o Pocket 3 em perfil Normal não usa) + ajustes pós via `exposure`/`eq`. Aplicada apenas a footage de câmera (`scope: camera`) — motion graphics nunca passam pela cadeia de cor. `--no-color` desliga. Previews lado a lado: ver `~/Downloads/color_preview/`.
+Seção `color` do style: LUT opcional (`lut3d`, só para footage D-Log M; o Pocket 3 em perfil Normal não usa — a LUT oficial já está em `assets/luts/dji_dlogm_to_rec709_v1.cube`) + ajustes pós via `exposure`/`eq`. Aplicada apenas a footage de câmera (`scope: camera`) — motion graphics nunca passam pela cadeia de cor. `--no-color` desliga. Previews lado a lado: ver `~/Downloads/color_preview/`.

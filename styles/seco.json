@@ -18,7 +18,7 @@
   "color": {
     "scope": "camera",
     "lut": null,
-    "lut_note": "Footage atual do Osmo Pocket 3 é perfil Normal (Rec.709) — LUT não se aplica. Se gravar em D-Log M, baixar a LUT oficial 'D-Log M to Rec.709' em https://www.dji.com/downloads/softwares/osmo-pocket-3-dlog-to-rec709, salvar em assets/luts/ e apontar o campo lut para ela.",
+    "lut_note": "Footage atual do Osmo Pocket 3 é perfil Normal (Rec.709) — LUT não se aplica. A LUT oficial D-Log M to Rec.709 (33x33x33, validada no ffmpeg) já está em assets/luts/dji_dlogm_to_rec709_v1.cube; se gravar em D-Log M, apontar o campo lut para esse caminho. Obs: o .cube foi gerado pela DJI para o Mavic 3 Pro — mesma curva D-Log M do Pocket 3.",
     "adjust": {
       "exposure_ev": 0.05,
       "contrast": 1.06,

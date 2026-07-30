@@ -123,12 +123,14 @@ def remove_repetitions(words: list[dict]) -> None:
                 break
 
 
-def subtract_silences(segments: list[dict], silences: list[dict]) -> list[dict]:
+def subtract_silences(segments: list[dict], silences: list[dict],
+                      kept_words: list[dict]) -> list[dict]:
     """Corta silêncios detectados no áudio de dentro dos segmentos mantidos.
 
     Necessário porque o aligner às vezes estica uma palavra por cima da pausa,
-    fazendo o silêncio 'desaparecer' dos timestamps do transcript. O texto dos
-    pedaços resultantes é aproximado (herdado do segmento original).
+    fazendo o silêncio 'desaparecer' dos timestamps do transcript. O texto de
+    cada pedaço é recomputado a partir das palavras que começam dentro dele;
+    pedaços sem palavra alguma (respiração, ruído entre silêncios) são descartados.
     """
     for sil in silences:
         cut_start = sil["start"] + PAD_AFTER
@@ -147,7 +149,16 @@ def subtract_silences(segments: list[dict], silences: list[dict]) -> list[dict]:
             if right["end"] - right["start"] >= 0.1:
                 result.append(right)
         segments = result
-    return segments
+
+    # o aligner estica só o fim das palavras; o início é confiável, então cada
+    # palavra pertence ao pedaço em que começa
+    out = []
+    for seg in segments:
+        texts = [w["word"] for w in kept_words
+                 if seg["start"] <= w["start"] < seg["end"]]
+        if texts:
+            out.append({**seg, "text": " ".join(texts)})
+    return out
 
 
 def build_intervals(words: list[dict], duration: float,
@@ -192,7 +203,7 @@ def build_intervals(words: list[dict], duration: float,
             "reason": "speech",
         })
 
-    out = subtract_silences(out, silences)
+    out = subtract_silences(out, silences, [w for w in words if w["keep"]])
 
     removed = []
     dropped = [w for w in words if not w["keep"]]

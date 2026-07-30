@@ -27,15 +27,35 @@ e não há medição de loudness pelo Premiere (sem leitura de RMS/LUFS no
 ExtendScript; o `detect_silence` do próprio MCP já usa ffmpeg por isso).
 O caminho ffmpeg continua sendo o de precisão para loudness.
 
-## Cor via MCP (investigado 2026-07-30, não implementado)
+## Cor via MCP (IMPLEMENTADO 2026-07-30 — E2E validado, 23 clipes)
 
-O servidor expõe `apply_lut` (clipId, lutPath absoluto .cube/.3dl, intensity
-0-100) e `color_correct` (brightness/contrast/saturation/hue/highlights/
-shadows/temperature/tint, escalas -100..100, por clipe). Não testados ao vivo —
-usam o mesmo mecanismo de componentes que o Hard Limiter (que funcionou), então
-a expectativa é positiva. Quando o caminho Premiere ganhar cor, mapear a seção
-`color` do style para esses dois calls, clipe a clipe (mesma limitação do áudio:
-não há efeito por track).
+A seção `color` do style vira **Lumetri Color por clipe**, editável no painel
+Lumetri depois (`--style seco` por padrão; `--no-color` desliga). Mapeamento em
+`lumetri_from_style`: exposure_ev → Exposure (stops); vibrance → Vibrance
+(×100); curve_s → Shadows/Highlights (desvio dos pontos ×400) + Contrast
+(inclinação do trecho central); eq → Contrast/Saturation. Aproximação visual —
+Lumetri ≠ filtros do ffmpeg; recalibrar no olho se o style mudar muito.
+
+Aplicação é UM `execute_extendscript` em lote (`build_lumetri_jsx`) para a
+track inteira — por clipe seriam 5×N round-trips. O JSX é idempotente: reusa
+Lumetri existente no clipe em vez de empilhar outro.
+
+Fragilidades descobertas no E2E de cor:
+
+- **Adjustment layer real é impossível por script**: `app.project.
+  createAdjustmentLayer` e o equivalente QE não existem no Premiere 2026. A
+  tool `add_adjustment_layer` do vendor "funciona" criando um **PNG
+  transparente** — armadilha: efeito sobre PNG transparente NÃO propaga para
+  as camadas de baixo; a grade fica silenciosamente invisível. Por isso a cor
+  é por clipe.
+- `remove_effect_by_name` não funciona (componentes não expõem remove/delete
+  no ExtendScript) — daí a necessidade do JSX idempotente.
+- `execute_extendscript` embrulha o script numa função: sem `return` o
+  resultado vem `"undefined"`. E a resposta é string JSON dupla-codificada —
+  `parse_tool_payload` do adaptador tolera payload não-dict.
+- displayNames do Lumetri vêm em inglês (Exposure/Contrast/Shadows/...) neste
+  install; propriedades repetem nome entre seções (Saturation em Basic e
+  Creative) — o JSX usa guard para setar só a primeira ocorrência.
 
 Consome a cut-list JSON (contrato no README da raiz) e monta a timeline no
 Premiere Pro: cria projeto novo, importa o vídeo fonte, cria sequência e coloca

@@ -22,6 +22,9 @@ import threading
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "adapters"))
+from render_ffmpeg import load_style  # noqa: E402 — style é a fonte de verdade comum
+
 SERVER_ENTRY = REPO_ROOT / "vendor/Adobe_Premiere_Pro_MCP/dist/index.js"
 BRIDGE_TEMP_DIR = "/tmp/premiere-mcp-bridge"
 PROTOCOL_VERSION = "2024-11-05"
@@ -104,13 +107,7 @@ class MCPStdioClient:
         result = self._request("tools/call", {"name": name, "arguments": arguments})
         texts = [c.get("text", "") for c in result.get("content", [])
                  if c.get("type") == "text"]
-        payload = {}
-        for text in texts:
-            try:
-                payload = json.loads(text)
-                break
-            except (json.JSONDecodeError, TypeError):
-                continue
+        payload = parse_tool_payload(texts)
         if result.get("isError") or payload.get("success") is False:
             detail = payload.get("error") or payload.get("message") or " ".join(texts)[:500]
             raise MCPError(f"tool {name} falhou: {detail}")
@@ -120,6 +117,104 @@ class MCPStdioClient:
         if self.proc and self.proc.poll() is None:
             self.proc.stdin.close()
             self.proc.terminate()
+
+
+def parse_tool_payload(texts: list[str]) -> dict:
+    """Primeiro JSON de tipo dict entre os textos da resposta. Tools como
+    execute_extendscript devolvem string JSON dupla-codificada — nunca quebrar."""
+    for text in texts:
+        try:
+            payload = json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
+
+def lumetri_from_style(color_cfg: dict) -> dict | None:
+    """Traduz a seção color do style para propriedades do Lumetri Color.
+
+    Mapeamento (aproximação visual — ffmpeg e Lumetri não são idênticos):
+    exposure_ev -> Exposure (stops); vibrance [0..2] -> Vibrance [-100..100];
+    curve_s -> Shadows/Highlights (desvio dos pontos de ancoragem x400) e
+    Contrast (inclinação do trecho central da curva); eq contrast/saturation
+    -> Contrast/Saturation. Valores ficam editáveis no painel Lumetri.
+    """
+    adjust = color_cfg.get("adjust", {})
+    params = {}
+    ev = adjust.get("exposure_ev", 0.0)
+    if ev:
+        params["Exposure"] = ev
+    contrast = 0.0
+    curve = adjust.get("curve_s")
+    if curve:
+        pts = [tuple(float(v) for v in p.split("/")) for p in curve.split()]
+        lo, hi = pts[1], pts[-2]
+        contrast += ((hi[1] - lo[1]) / (hi[0] - lo[0]) - 1.0) * 100
+        params["Shadows"] = round((lo[1] - lo[0]) * 400)
+        params["Highlights"] = round((hi[1] - hi[0]) * 400)
+    if adjust.get("contrast", 1.0) != 1.0:
+        contrast += (adjust["contrast"] - 1.0) * 100
+    if contrast:
+        params["Contrast"] = round(contrast)
+    if adjust.get("saturation", 1.0) != 1.0:
+        params["Saturation"] = round(adjust["saturation"] * 100)
+    vibrance = adjust.get("vibrance", 0.0)
+    if vibrance:
+        params["Vibrance"] = round(vibrance * 100)
+    return params or None
+
+
+def build_lumetri_jsx(params: dict, track_index: int = 0) -> str:
+    """ExtendScript que aplica UM Lumetri Color por clipe da track, em lote.
+
+    Uma chamada MCP para a timeline inteira (por clipe seriam 5xN round-trips).
+    O guard `done` protege propriedades com displayName duplicado entre seções
+    do Lumetri (ex.: Saturation existe em Basic e Creative — só a primeira leva).
+    """
+    sets = "\n            ".join(
+        f'if (!done["{name}"] && p.displayName === "{name}") '
+        f'{{ p.setValue({json.dumps(value)}, true); done["{name}"] = true; }}'
+        for name, value in params.items())
+    return f"""
+      app.enableQE();
+      var effect = qe.project.getVideoEffectByName("Lumetri Color");
+      if (!effect) return JSON.stringify({{success: false, error: "Lumetri Color indisponível"}});
+      var seq = app.project.activeSequence;
+      var qeSeq = qe.project.getActiveSequence();
+      if (!seq || !qeSeq) return JSON.stringify({{success: false, error: "sem sequência ativa"}});
+      var qeTrack = qeSeq.getVideoTrackAt({track_index});
+      var domTrack = seq.videoTracks[{track_index}];
+      var applied = 0, clipIdx = 0;
+      for (var i = 0; i < qeTrack.numItems; i++) {{
+        var item = qeTrack.getItemAt(i);
+        var kind = "";
+        try {{ kind = String(item.type); }} catch (e) {{}}
+        if (kind !== "Clip") continue;
+        var domClip = domTrack.clips[clipIdx];
+        var comp = null;
+        for (var k = 0; k < domClip.components.numItems; k++) {{
+          if (String(domClip.components[k].displayName) === "Lumetri Color") {{
+            comp = domClip.components[k];
+            break;
+          }}
+        }}
+        if (!comp) {{
+          item.addVideoEffect(effect);
+          comp = domClip.components[domClip.components.numItems - 1];
+        }}
+        var done = {{}};
+        for (var j = 0; j < comp.properties.numItems; j++) {{
+          var p = comp.properties[j];
+          try {{
+            {sets}
+          }} catch (e2) {{}}
+        }}
+        applied++; clipIdx++;
+      }}
+      return JSON.stringify({{success: true, applied: applied}});
+    """
 
 
 def find_key(obj, *keys):
@@ -175,7 +270,8 @@ def build_batch(cutlist: dict, item_id: str) -> list[dict]:
 
 
 def render(video: Path, cutlist: dict, project_dir: Path, project_name: str,
-           sequence_name: str, timeout: float, use_open_project: bool = False) -> None:
+           sequence_name: str, timeout: float, use_open_project: bool = False,
+           color_cfg: dict | None = None) -> None:
     client = MCPStdioClient(
         ["node", str(SERVER_ENTRY)],
         env={"PREMIERE_TEMP_DIR": BRIDGE_TEMP_DIR},
@@ -238,6 +334,17 @@ def render(video: Path, cutlist: dict, project_dir: Path, project_name: str,
         if status == "failure":
             raise MCPError(f"nenhum clipe foi colocado: {result}")
 
+        lumetri = lumetri_from_style(color_cfg) if color_cfg else None
+        if lumetri:
+            print(f"aplicando Lumetri Color nos clipes: {lumetri}...")
+            client.call_tool("set_active_sequence", {"sequenceId": str(seq_id)})
+            graded = client.call_tool("execute_extendscript",
+                                      {"script": build_lumetri_jsx(lumetri)})
+            applied = graded.get("applied")
+            if applied != len(clips):
+                raise MCPError(f"Lumetri aplicado em {applied} de {len(clips)} clipes")
+            print(f"lumetri aplicado em {applied} clipes.")
+
         client.call_tool("save_project", {})
         total = sum(s["end"] - s["start"] for s in cutlist["segments"])
         print(f"timeline '{sequence_name}' montada com {len(clips)} segmentos "
@@ -258,6 +365,10 @@ def main() -> None:
                         help="segundos de espera por resposta de cada tool")
     parser.add_argument("--use-open-project", action="store_true",
                         help="usa o projeto já aberto no Premiere em vez de criar um novo")
+    parser.add_argument("--style", default="seco",
+                        help="style file cuja seção color vira Lumetri nos clipes")
+    parser.add_argument("--no-color", action="store_true",
+                        help="monta a timeline sem aplicar a grade do style")
     parser.add_argument("--dry-run", action="store_true",
                         help="só mostra as chamadas planejadas, sem tocar no Premiere")
     args = parser.parse_args()
@@ -272,6 +383,10 @@ def main() -> None:
     if cutlist.get("version") != 1:
         sys.exit(f"versão de cut-list não suportada: {cutlist.get('version')}")
 
+    color_cfg = None
+    if not args.no_color:
+        color_cfg = load_style(args.style).get("color")
+
     if args.dry_run:
         clips = build_batch(cutlist, "<item_id>")
         print(f"dry-run: create_project({args.project_name!r}) -> "
@@ -283,10 +398,12 @@ def main() -> None:
                   f"{c['sourceOutPoint']:8.3f}]")
         if len(clips) > 5:
             print(f"  ... +{len(clips) - 5} clipes")
+        lumetri = lumetri_from_style(color_cfg) if color_cfg else None
+        print(f"  lumetri ({args.style}): {lumetri}")
         return
 
     render(args.video, cutlist, args.project_dir, args.project_name,
-           args.sequence_name, args.timeout, args.use_open_project)
+           args.sequence_name, args.timeout, args.use_open_project, color_cfg)
 
 
 if __name__ == "__main__":

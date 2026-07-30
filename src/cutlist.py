@@ -33,6 +33,9 @@ DEFAULTS = {
     "trim_end": 0.0,              # corta DENTRO da fala no fim do segmento
     "trim_min_duration": 0.8,     # segmento abaixo disso não recebe trim algum
     "trim_max_fraction": 0.12,    # trim por borda limitado a esta fração da duração
+    "trim_max_word_fraction": 0.3,  # trim limitado a esta fração da palavra da borda
+    "min_word_protect": 0.4,      # palavra da borda abaixo disso: trim zero naquela borda
+    "short_word_end_margin": 0.5,  # teto da extensão até o silêncio real após palavra final curta
     "min_segment": MIN_SEGMENT,
 }
 
@@ -188,30 +191,56 @@ def subtract_silences(segments: list[dict], silences: list[dict],
     return out
 
 
-def apply_edge_trims(segments: list[dict], cfg: dict) -> list[dict]:
-    """Trim negativo adaptativo: invade a fala nas bordas de cada segmento.
+def apply_edge_trims(segments: list[dict], cfg: dict, kept_words: list[dict],
+                     silences: list[dict]) -> list[dict]:
+    """Trim negativo adaptativo, consciente de segmento E de palavra.
 
-    Trim fixo come palavras curtas isoladas inteiras, então a regra escala com
-    a duração do segmento:
-    - abaixo de trim_min_duration: nenhum trim (palavra única sai intacta);
-    - cada borda perde no máximo trim_max_fraction da duração;
-    - segmentos longos recebem trim_start/trim_end na íntegra.
-    Se mesmo assim ficaria menor que min_segment, mantém as bordas originais.
+    Trim fixo come palavras curtas inteiras, então a regra escala em dois níveis:
+    - segmento abaixo de trim_min_duration: nenhum trim;
+    - cada borda perde no máximo trim_max_fraction da duração do segmento
+      E trim_max_word_fraction da duração da palavra daquela borda;
+    - palavra da borda mais curta que min_word_protect: trim zero naquela borda;
+    - segmentos longos com palavras longas nas bordas: trim_start/trim_end na íntegra.
+    Se o resultado ficaria menor que min_segment, mantém as bordas originais.
+
+    Sigla/palavra curta no FIM ("CRM"): o aligner costuma fechar a palavra antes
+    da fala acabar. Se a última palavra é curta e há silêncio detectado logo à
+    frente, o fim do segmento estende até o início do silêncio real (teto:
+    short_word_end_margin), nunca invadindo o segmento seguinte.
     """
     trim_start, trim_end = cfg["trim_start"], cfg["trim_end"]
     if trim_start <= 0 and trim_end <= 0:
         return segments
     out = []
-    for seg in segments:
-        duration = seg["end"] - seg["start"]
-        if duration < cfg["trim_min_duration"]:
+    for i, seg in enumerate(segments):
+        inside = [w for w in kept_words if seg["start"] <= w["start"] < seg["end"]]
+        if not inside:
             out.append(seg)
             continue
-        allowed = cfg["trim_max_fraction"] * duration
-        start = seg["start"] + min(trim_start, allowed)
-        end = seg["end"] - min(trim_end, allowed)
-        if end - start < cfg["min_segment"]:
-            start, end = seg["start"], seg["end"]
+        duration = seg["end"] - seg["start"]
+        first, last = inside[0], inside[-1]
+        first_dur = first["end"] - first["start"]
+        last_dur = last["end"] - last["start"]
+        start, end = seg["start"], seg["end"]
+
+        if duration >= cfg["trim_min_duration"]:
+            allowed = cfg["trim_max_fraction"] * duration
+            ts = 0.0 if first_dur < cfg["min_word_protect"] else min(
+                trim_start, allowed, cfg["trim_max_word_fraction"] * first_dur)
+            te = 0.0 if last_dur < cfg["min_word_protect"] else min(
+                trim_end, allowed, cfg["trim_max_word_fraction"] * last_dur)
+            if (seg["end"] - te) - (seg["start"] + ts) >= cfg["min_segment"]:
+                start, end = seg["start"] + ts, seg["end"] - te
+
+        if last_dur < cfg["min_word_protect"] and cfg["short_word_end_margin"] > 0:
+            next_sil = min((s["start"] for s in silences if s["start"] >= end - 0.01),
+                           default=None)
+            if next_sil is not None:
+                limit = seg["end"] + cfg["short_word_end_margin"]
+                if i + 1 < len(segments):
+                    limit = min(limit, segments[i + 1]["start"])
+                end = max(end, min(next_sil, limit))
+
         out.append({**seg, "start": round(start, 3), "end": round(end, 3)})
     return out
 
@@ -258,8 +287,9 @@ def build_intervals(words: list[dict], duration: float, silences: list[dict],
             "reason": "speech",
         })
 
-    out = subtract_silences(out, silences, [w for w in words if w["keep"]], cfg)
-    out = apply_edge_trims(out, cfg)
+    kept_words = [w for w in words if w["keep"]]
+    out = subtract_silences(out, silences, kept_words, cfg)
+    out = apply_edge_trims(out, cfg, kept_words, silences)
 
     removed = []
     dropped = [w for w in words if not w["keep"]]

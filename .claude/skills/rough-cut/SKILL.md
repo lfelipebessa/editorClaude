@@ -9,10 +9,17 @@ description: Fluxo padrão para gerar rough cut de um vídeo bruto do canal — 
 ajuste valores inline. Toda mudança de estilo (trims, gaps, plataformas) é feita
 editando `styles/seco.json` — fonte única de verdade, versionada no git.
 
-O trim de borda é **adaptativo à duração do segmento** (regra em `apply_edge_trims`,
-valores no style): segmento abaixo de `trim_min_duration` não recebe trim algum
-(palavra curta isolada sai intacta); cada borda perde no máximo `trim_max_fraction`
-da duração; segmentos longos recebem `trim_start`/`trim_end` na íntegra.
+O trim de borda é **adaptativo à duração do segmento E da palavra da borda**
+(regra em `apply_edge_trims`, valores no style):
+- segmento abaixo de `trim_min_duration` não recebe trim algum;
+- cada borda perde no máximo `trim_max_fraction` da duração do segmento e
+  `trim_max_word_fraction` da duração da palavra daquela borda;
+- palavra da borda mais curta que `min_word_protect` → trim zero naquela borda
+  (palavra nunca sai truncada);
+- palavra final curta/sigla (ex.: "CRM"): o aligner costuma fechá-la antes da fala
+  acabar — o fim estende até o silêncio real detectado, com teto
+  `short_word_end_margin`, sem nunca invadir o segmento seguinte;
+- segmento longo com palavras longas nas bordas → `trim_start`/`trim_end` na íntegra.
 
 ## Fluxo (executar do diretório do projeto, com `.venv` ativo)
 

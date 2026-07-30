@@ -42,10 +42,14 @@ python src/cutlist.py output/transcript.json --preset seco -o output/cutlist.jso
 #   trim-start/trim-end: segundos cortados DENTRO da fala nas bordas de cada segmento
 #   max-word-gap: pausa entre palavras acima da qual vira corte (default 0.8s)
 #
-# O trim de borda é adaptativo à duração do segmento (valores no style):
-#   duração < trim_min_duration  -> trim zero (palavra curta isolada sai intacta)
+# O trim de borda é adaptativo à duração do segmento E da palavra da borda:
+#   duração < trim_min_duration      -> trim zero (palavra curta isolada sai intacta)
 #   cada borda perde no máximo trim_max_fraction da duração do segmento
-#   segmentos longos             -> trim_start/trim_end na íntegra
+#     e trim_max_word_fraction da duração da palavra daquela borda
+#   palavra da borda < min_word_protect -> trim zero naquela borda (nunca truncar palavra)
+#   palavra final curta/sigla ("CRM")   -> fim estende até o silêncio real detectado
+#     (aligner fecha siglas cedo demais), teto short_word_end_margin
+#   segmentos longos com palavras longas nas bordas -> trim_start/trim_end na íntegra
 #
 # Presets vivem em styles/<nome>.json (fonte única de verdade, versionada).
 # styles/seco.json também define as plataformas de saída (16:9 / 9:16).

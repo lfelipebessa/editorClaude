@@ -9,7 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from compose import (find_scene_starts, format_srt, group_captions,
-                     normalize_text, parse_srt, remap_words)
+                     merge_corrected_text, normalize_text, parse_srt,
+                     remap_words, remap_words_by_clips)
 
 WORDS_SRC = [  # tempos no VÍDEO BRUTO
     {"word": "Eu", "start": 1.0, "end": 1.2},
@@ -92,6 +93,31 @@ def test_parse_brief_scenes():
     # reticências e aspas não podem vazar para a âncora
     assert scenes[1]["loop"] is True
     assert scenes[1]["match"].startswith("são 31 tarefas"), scenes[1]
+
+
+def test_merge_corrected_text_keeps_fixes_and_timing():
+    # transcript dá o timing; SRT corrigido dá o texto (INSTALEI, CLAUDE...)
+    words = [{"word": w, "start": i * 1.0, "end": i * 1.0 + 0.5}
+             for i, w in enumerate(["eu", "estalei", "no", "cloud", "hoje"])]
+    corrected = [{"text": "EU INSTALEI", "start": 0, "end": 1.5},
+                 {"text": "NO CLAUDE HOJE", "start": 2, "end": 4.5}]
+    merged = merge_corrected_text(words, corrected)
+    assert [w["word"] for w in merged] == ["EU", "INSTALEI", "NO", "CLAUDE",
+                                          "HOJE"], merged
+    assert merged[1]["start"] == 1.0, merged[1]      # timing do original
+    assert merged[3]["start"] == 3.0, merged[3]
+
+
+def test_remap_words_by_clips_follows_current_timeline():
+    # layout ATUAL da timeline (pós-edição manual): clipes com posição própria
+    words = [{"word": "a", "start": 10.0, "end": 10.4},
+             {"word": "b", "start": 20.0, "end": 20.4},
+             {"word": "fora", "start": 30.0, "end": 30.4}]
+    clips = [{"start": 5.0, "inPoint": 19.8, "outPoint": 21.0},   # fora de ordem
+             {"start": 0.0, "inPoint": 9.9, "outPoint": 11.0}]
+    out = remap_words_by_clips(words, clips)
+    assert [(w["word"], w["start"]) for w in out] == \
+        [("a", 0.1), ("b", 5.2)], out                # "fora" foi cortada
 
 
 def test_parse_srt_roundtrip():

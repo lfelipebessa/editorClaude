@@ -40,6 +40,58 @@ def remap_words(words: list[dict], cut_segments: list[dict]) -> list[dict]:
     return out
 
 
+def remap_words_by_clips(words: list[dict], clips: list[dict]) -> list[dict]:
+    """Remap pelo layout ATUAL da timeline (pós-edição manual do usuário).
+
+    Cada clip = {start (posição na timeline), inPoint, outPoint (trecho do
+    bruto)}. Diferente do remap_words (cutlist cumulativa), aqui a posição
+    vem do próprio clipe — sobrevive a cortes, encurtamentos e gaps.
+    """
+    out = []
+    for clip in sorted(clips, key=lambda c: c["start"]):
+        for w in words:
+            mid = (w["start"] + w["end"]) / 2
+            if clip["inPoint"] <= mid < clip["outPoint"]:
+                start = clip["start"] + max(w["start"], clip["inPoint"]) - clip["inPoint"]
+                end = clip["start"] + min(w["end"], clip["outPoint"]) - clip["inPoint"]
+                out.append({"word": w["word"],
+                            "start": round(start, 3), "end": round(end, 3)})
+    return out
+
+
+def merge_corrected_text(words: list[dict],
+                         corrected_chunks: list[dict]) -> list[dict]:
+    """Texto do SRT corrigido (INSTALEI, CLAUDE, ADMIN...) + timing do
+    transcript -> palavras corrigidas com timing. Alinha os dois fluxos de
+    tokens com SequenceMatcher; substituição herda o timing das originais;
+    palavra removida na correção some; inserção cola na anterior.
+    """
+    corr_tokens = [t for c in corrected_chunks for t in c["text"].split()]
+    a = [normalize_text(w["word"]) for w in words]
+    b = [normalize_text(t) for t in corr_tokens]
+    matcher = SequenceMatcher(None, a, b, autojunk=False)
+    out = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            for k in range(i2 - i1):
+                w = words[i1 + k]
+                out.append({"word": corr_tokens[j1 + k],
+                            "start": w["start"], "end": w["end"]})
+        elif tag == "replace":
+            span, tokens = words[i1:i2], corr_tokens[j1:j2]
+            t0, t1 = span[0]["start"], span[-1]["end"]
+            n = len(tokens)
+            for k, token in enumerate(tokens):
+                out.append({"word": token,
+                            "start": round(t0 + (t1 - t0) * k / n, 3),
+                            "end": round(t0 + (t1 - t0) * (k + 1) / n, 3)})
+        elif tag == "insert":
+            anchor = out[-1]["end"] if out else 0.0
+            for token in corr_tokens[j1:j2]:
+                out.append({"word": token, "start": anchor, "end": anchor})
+    return out
+
+
 def group_captions(words: list[dict], max_words: int = 3,
                    max_gap: float = 0.6, max_dur: float = 2.5) -> list[dict]:
     """Agrupa palavras em legendas curtas estilo social."""

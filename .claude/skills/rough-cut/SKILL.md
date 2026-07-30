@@ -104,9 +104,13 @@ Dado um vídeo bruto `<video>`:
    (cabeça quase encostando na divisa: Scale 58, Position [0.58, 0.6825] +
    Crop Top 22.03% para fonte 4K 16:9) já sai do camera_transform do próprio
    compose_premiere — conferir por frame exportado (cabeça a ~20-35px da
-   divisa). Avisar o usuário dos toques manuais: estilo/posição da caption
-   track (divisa, y≈960) e, se quiser as curvas finas, Remove Attributes +
-   Paste Attributes da referência em V2 (NUNCA marcar Motion nem Crop).
+   divisa). Avisar o usuário dos toques manuais: (1) na caption track nova,
+   aplicar o **Track Style `canal`** (dropdown Track Style no Essential
+   Graphics — estilo salvo pelo usuário em 2026-07-30: maiúsculas, branco
+   com contorno preto, apoiada na divisa) — 2 cliques; (2) se quiser as
+   curvas finas, Remove Attributes + Paste Attributes da referência em V2
+   (NUNCA marcar Motion nem Crop); (3) travar a track da música antes de
+   editar (ripple não deve encolher o bed).
 
 4. **Reportar** ao final, sempre:
    - duração original vs final;

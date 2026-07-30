@@ -68,6 +68,12 @@ Fragilidades descobertas no E2E de cor:
   (Cmd+C no clipe fonte -> selecionar alvos -> Cmd+Opt+V marcando Lumetri
   Color e Noise). O adaptador automatiza o resto; curvas finas são passo
   manual único por timeline.
+- **Paste Attributes EMPILHA efeitos homônimos** (não substitui): colar
+  Lumetri num clipe que já tem Lumetri = grade dobrada. Fluxo do canal com
+  grade de referência (curvas feitas à mão): montar a timeline com
+  `--no-color` e colar da referência — OU, se a timeline já nasceu com cor
+  por script, Remove Attributes (Lumetri Color + Noise) nos alvos ANTES de
+  colar. Não há remoção de efeito via API; a limpeza é sempre nativa.
 - O efeito **Noise do Premiere 2026 é o novo, estilo film grain**
   (Intensity/Shadows/Midtones/Highlights/Saturation/Blend Mode) — o clássico
   "Amount of Noise" não existe mais. Grain do finish vira Intensity (grain×3)

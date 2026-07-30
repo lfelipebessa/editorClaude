@@ -57,9 +57,15 @@ Dado um vídeo bruto `<video>`:
    **(b) timeline no Premiere Pro (MCP)** — requer Premiere aberto com o painel
    `MCP Bridge (CEP)` iniciado (setup único: adapters/premiere_mcp/README.md):
    ```bash
-   .venv/bin/python adapters/premiere_mcp/render_premiere.py <video> output/cutlist_<slug>.json --project-name EditorClaude_<slug>
+   .venv/bin/python adapters/premiere_mcp/render_premiere.py <video> output/cutlist_<slug>.json --project-name EditorClaude_<slug> --no-color
    ```
    Cria projeto NOVO — nunca tocar em projetos existentes do usuário.
+   `--no-color` é o padrão do canal no Premiere: a grade completa (com as
+   curvas feitas à mão) vem de Paste Attributes a partir da sequência de
+   referência `rough_cut_dji_v4_audio` (projeto EditorClaude_teste). Colar
+   Lumetri em clipe que já tem Lumetri DOBRA a grade — por isso a timeline
+   nasce limpa de cor. Sem `--no-color` só quando o usuário não for usar a
+   referência (aí a grade escalar do style entra por script).
    - `<slug>`: identificador curto derivado do nome do arquivo + data (ex.: `dji_20260729`).
    - `vN`: v1, v2... — nunca sobrescrever uma versão anterior; o usuário compara versões.
    - Variante vertical (Instagram/TikTok): adicionar `--platform instagram` (ou `tiktok`)

@@ -73,6 +73,27 @@ def test_format_srt():
     assert "2\n00:00:01,600 --> 00:00:02,400\num plugin\n" in srt
 
 
+BRIEF_MD = '''
+# Brief: teste
+
+| # | Trecho (resumo) | Conceito visual | Skill | Dur. | Loop | Layout |
+|---|---|---|---|---|---|---|
+| 01 | "Eu ia contratar um funcionário pro administrativo, mas instalei." | Contador | motion | 7s | não | split-safe |
+| 02 | "…são 31 tarefas empacotadas: cobrar fatura, planejar folha." | Chips | motion | 12s | sim | split-safe |
+'''
+
+
+def test_parse_brief_scenes():
+    from compose import parse_brief_scenes
+    scenes = parse_brief_scenes(BRIEF_MD)
+    assert len(scenes) == 2, scenes
+    assert scenes[0]["num"] == "01" and scenes[0]["loop"] is False
+    assert scenes[0]["match"].startswith("Eu ia contratar um funcionário"), scenes[0]
+    # reticências e aspas não podem vazar para a âncora
+    assert scenes[1]["loop"] is True
+    assert scenes[1]["match"].startswith("são 31 tarefas"), scenes[1]
+
+
 def test_parse_srt_roundtrip():
     chunks = [{"text": "Eu ia contratar", "start": 0.1, "end": 1.4},
               {"text": "um plugin", "start": 1.6, "end": 2.4}]

@@ -73,6 +73,28 @@ Dado um vídeo bruto `<video>`:
      vertical, extrair 1 frame do meio e conferir o enquadramento do rosto; ajustar
      `--crop-x-offset` se necessário.
 
+3b. **Reel composto com motion graphics** — quando existir dir do vídeo no
+   MotionSkills (`~/development/MotionSkills/motion-graphics/src/videos/<nome>/`
+   com `brief.md` e clips renderizados em `out/<nome>/clips/`), este é o
+   FORMATO PADRÃO do Reel: motions em cima, câmera embaixo, legendas na divisa.
+
+   ```bash
+   # 1. cola: manifest resolvido (âncoras textuais do brief) + SRT MAIÚSCULO
+   .venv/bin/python src/prepare_compose.py output/transcript_<slug>.json output/cutlist_<slug>.json ~/development/MotionSkills/motion-graphics/src/videos/<nome>
+   # 2. REVISAR o SRT contra o brief (transcrição erra: cloud->Claude,
+   #    admira->ADMIN...) — corrigir SÓ texto, nunca timestamps
+   # 3. mp4 automático (preview/publicação):
+   .venv/bin/python adapters/compose_ffmpeg.py <video> output/cutlist_<slug>.json output/motion_manifest_<slug>.json --srt output/captions_<slug>.srt -o ~/Downloads/reel_<slug>.mp4
+   # 4. timeline editável no Premiere (fluxo de finalização do usuário):
+   .venv/bin/python adapters/premiere_mcp/compose_premiere.py <video> output/cutlist_<slug>.json output/motion_manifest_<slug>.json --srt output/captions_<slug>.srt --sequence-name reel_<slug>
+   ```
+   Após o compose_premiere, aplicar a grade nos clipes de V2 (track_index=1)
+   com build_lumetri_jsx + noise_from_style, e centralizar a câmera com
+   build_motion_jsx (padrão validado: Scale 48, Position [0.57, 0.77] para
+   fonte 4K 16:9 — conferir por frame exportado). Avisar o usuário dos toques
+   manuais: estilo/posição da caption track (divisa, y≈960) e, se quiser as
+   curvas finas, Remove Attributes + Paste Attributes da referência em V2.
+
 4. **Reportar** ao final, sempre:
    - duração original vs final;
    - número de segmentos mantidos e cortes por motivo (silence, stutter, false_start,

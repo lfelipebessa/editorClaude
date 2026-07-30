@@ -70,6 +70,7 @@
     "size": 64,
     "outline": 4,
     "max_words": 3,
-    "max_gap": 0.6
+    "max_gap": 0.6,
+    "uppercase": true
   }
 }

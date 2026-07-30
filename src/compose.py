@@ -80,6 +80,30 @@ def find_scene_starts(scenes: list[dict], words: list[dict]) -> list[float]:
     return starts
 
 
+def parse_brief_scenes(md: str) -> list[dict]:
+    """Extrai as cenas da tabela do brief.md do MotionSkills.
+
+    Linhas `| NN | "Trecho..." | ... | Dur | Loop | Layout |` viram
+    {num, match (primeiras 8 palavras do trecho), loop}. A âncora textual
+    vem direto do trecho de fala que o próprio brief associa à cena.
+    """
+    scenes = []
+    for line in md.splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) < 7 or not re.fullmatch(r"\d{2}", cells[0]):
+            continue
+        # âncora curta (5 palavras): prende no COMEÇO da seção; trecho longo
+        # arrasta o match para o meio quando a fala real diverge do brief
+        trecho = cells[1].strip().strip('"').lstrip("…").strip()
+        scenes.append({"num": cells[0],
+                       "match": " ".join(trecho.split()[:5]),
+                       "loop": cells[5].strip().lower().startswith("s")})
+    return scenes
+
+
 def parse_srt(text: str) -> list[dict]:
     """SRT (a fonte de verdade editável) -> chunks {text, start, end}."""
     pattern = re.compile(

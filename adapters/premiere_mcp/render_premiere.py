@@ -217,6 +217,13 @@ def render(video: Path, cutlist: dict, project_dir: Path, project_name: str,
                                 "clearContents": True})
         seq_id = find_key(seq, "sequenceId", "sequenceID")
         if not seq_id:
+            # a resposta nem sempre traz o id; localiza pela lista (nome + vazia)
+            seqs = client.call_tool("list_sequences", {})
+            for s in seqs.get("sequences", []):
+                if s.get("name") == sequence_name and not s.get("duration"):
+                    seq_id = s.get("id")
+                    break
+        if not seq_id:
             raise MCPError("duplicate_sequence não retornou sequenceId")
         client.call_tool("delete_sequence", {"sequenceId": str(tmp_id)})
 

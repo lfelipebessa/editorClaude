@@ -1,6 +1,20 @@
 # Adaptador Premiere Pro MCP
 
-**Status: implementado. Aguarda passos manuais do usuário no Premiere (uma vez).**
+**Status: FUNCIONANDO — E2E validado em 2026-07-30 (27 clipes, 57.56s, 4K, Premiere 26.3).**
+
+## Fragilidades conhecidas do bridge (aprendidas no E2E real)
+
+- **NUNCA chamar `create_sequence`**: com preset vazio abre o diálogo modal
+  "New Sequence" e congela TODO o scripting do Premiere até fechar na mão.
+  O adaptador usa `create_sequence_from_clips` + `duplicate_sequence(clearContents)`.
+- Qualquer tool que dispare UI modal trava o host sem erro identificável — o
+  timeout de 45s do ExtendScript é a única pista. Não adianta re-tentar por
+  software; alguém precisa fechar o diálogo no app.
+- Respostas de tools nem sempre trazem o id esperado (`duplicate_sequence`);
+  o adaptador tem fallbacks via `list_sequences`/`list_project_items`.
+- `list_sequence_tracks` devolve os clipes mas com start/end zerados (quirk do
+  bridge); use a duração da sequência em `list_sequences` para validação.
+- Re-importar o mesmo arquivo cria itens duplicados no projeto (inofensivo).
 
 Consome a cut-list JSON (contrato no README da raiz) e monta a timeline no
 Premiere Pro: cria projeto novo, importa o vídeo fonte, cria sequência e coloca

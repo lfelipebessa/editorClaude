@@ -85,6 +85,22 @@ Premiere Pro: cria projeto novo, importa o vídeo fonte, cria sequência e coloc
 um subclip `[start, end)` por segmento, na ordem, via `add_to_timeline_batch`.
 Mesmo contrato do adaptador ffmpeg — este adaptador não decide corte, só executa.
 
+## Composer vertical editável (compose_premiere.py)
+
+Consome cut-list + motion-manifest + SRT (mesmos contratos do
+`compose_ffmpeg.py`) e monta o Reel como TIMELINE: sequência 1080x1920 criada
+de um clipe de motion (herda formato sem diálogo), V1 = motions full-frame nos
+tempos resolvidos, V2 = câmera com Motion Scale/Position na metade de baixo
+(JSX em lote), caption track do SRT via `import_media` + `create_caption_track`
+(texto corrigível no painel Captions; posição/estilo do track = ajuste único no
+Essential Graphics). Cor: Paste Attributes da referência em V2 (NUNCA marcar
+Motion). E2E validado 2026-07-30: 6 motions + 27 cortes + captions.
+
+Fragilidade extra: `export_frame` interpreta `time` numa unidade não-linear
+(não é segundos nem frames×fps de forma consistente) — para conferência
+visual, exportar vários pontos e validar pela CONSISTÊNCIA cena↔legenda, não
+pelo timestamp pedido.
+
 ## Arquitetura
 
 ```

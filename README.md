@@ -121,6 +121,10 @@ src/            núcleo agnóstico de editor
   cutlist.py      transcript.json → cutlist.json
 adapters/       saídas
   render_ffmpeg.py   cut-list → rough_cut.mp4 (ffmpeg)
+  compose_ffmpeg.py  bruto + cut-list + motion-manifest [+ SRT] → Reel 1080x1920
+                     (motion MotionSkills em cima, câmera 9:8 gradada embaixo,
+                     legendas na divisa; ver src/compose.py para o resolvedor
+                     de âncoras textuais e o SRT editável)
   premiere_mcp/      esqueleto do adaptador Premiere Pro MCP (não instalado)
 tests/          testes
 ```

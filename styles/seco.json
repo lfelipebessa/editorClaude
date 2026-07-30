@@ -64,5 +64,12 @@
       "crop": "center",
       "crop_x_offset": 0
     }
+  },
+  "captions": {
+    "font_file": "/System/Library/Fonts/Supplemental/Arial Black.ttf",
+    "size": 64,
+    "outline": 4,
+    "max_words": 3,
+    "max_gap": 0.6
   }
 }

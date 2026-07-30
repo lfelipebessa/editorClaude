@@ -35,6 +35,8 @@ def main() -> None:
     parser.add_argument("--out-manifest", type=Path, default=None)
     parser.add_argument("--out-srt", type=Path, default=None)
     parser.add_argument("--style", default="seco")
+    parser.add_argument("--motion-y-px", type=int, default=None,
+                        help="compensa set de motion autorado fora do split-safe (ex.: 1049 no plugin-administrativo)")
     args = parser.parse_args()
 
     brief = args.motions_dir / "brief.md"
@@ -73,7 +75,9 @@ def main() -> None:
         sc["start"] = st
     manifest = {"version": 1,
                 "layout": {"motion": "top", "camera": "bottom",
-                           "width": 1080, "height": 1920, "fps": 30},
+                           "width": 1080, "height": 1920, "fps": 30,
+                           **({"motion_y_px": args.motion_y_px}
+                              if args.motion_y_px else {})},
                 "cutlist": str(args.cutlist),
                 "scenes": [{"clip": sc["clip"], "match": sc["match"],
                             "loop": sc["loop"], "start": sc["start"]}

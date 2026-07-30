@@ -132,6 +132,36 @@ def build_crop_jsx(track_index: int, top_pct: float) -> str:
     """
 
 
+def build_position_y_jsx(track_index: int, y_norm: float) -> str:
+    """ExtendScript: seta SÓ o Position Y dos clipes da track (X e Scale
+    intactos) — compensação de sets de motion autorados fora do split-safe."""
+    return f"""
+      var seq = app.project.activeSequence;
+      if (!seq) return JSON.stringify({{success: false, error: "sem sequência ativa"}});
+      var track = seq.videoTracks[{track_index}];
+      var done = 0;
+      for (var c = 0; c < track.clips.numItems; c++) {{
+        var clip = track.clips[c];
+        for (var k = 0; k < clip.components.numItems; k++) {{
+          if (String(clip.components[k].displayName) !== "Motion") continue;
+          var comp = clip.components[k];
+          for (var j = 0; j < comp.properties.numItems; j++) {{
+            var p = comp.properties[j];
+            try {{
+              if (p.displayName === "Position") {{
+                var cur = p.getValue();
+                p.setValue([cur[0], {y_norm}], true);
+              }}
+            }} catch (e) {{}}
+          }}
+          done++;
+          break;
+        }}
+      }}
+      return JSON.stringify({{success: true, clips: done}});
+    """
+
+
 def import_item(client: MCPStdioClient, path: Path) -> str:
     imported = client.call_tool("import_media", {"filePath": str(path.resolve())})
     item_id = find_key(imported, "projectItemId", "itemId", "nodeId", "id")
@@ -173,7 +203,9 @@ def build_music_place_jsx(item_id: str, track_index: int, offset: float,
 
 
 def build_mg_clips(scenes: list[dict], mg_ids: list[str],
-                   cam_starts: list[float], total: float) -> list[dict]:
+                   cam_starts: list[float], total: float,
+                   y_px: int | None = None,
+                   seq_h: int = 1920) -> list[dict]:
     """Motions para V1 JÁ CORTADOS nos pontos de corte da câmera.
 
     Com os cortes alinhados, apagar um trecho do rosto + o pedaço de motion
@@ -189,10 +221,15 @@ def build_mg_clips(scenes: list[dict], mg_ids: list[str],
                   + [round(t, 5) for t in cam_starts if start < t < end]
                   + [round(end, 5)])
         for a, b in zip(bounds, bounds[1:]):
-            clips.append({"projectItemId": mg_id, "trackIndex": 0,
-                          "time": a,
-                          "sourceInPoint": round(a - start, 5),
-                          "sourceOutPoint": round(b - start, 5)})
+            clip = {"projectItemId": mg_id, "trackIndex": 0,
+                    "time": a,
+                    "sourceInPoint": round(a - start, 5),
+                    "sourceOutPoint": round(b - start, 5)}
+            if y_px is not None:
+                # compensação para sets autorados fora do split-safe
+                # (conteúdo acima de y=90); padrão é posição nativa
+                clip["positionY"] = y_px / seq_h
+            clips.append(clip)
     return clips
 
 
@@ -291,12 +328,18 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
         # V1: motions nos tempos resolvidos, PRÉ-CORTADOS nos cortes da câmera
         cam_clips = build_batch(cutlist, cam_id, fps=layout.get("fps", 30))
         cam_starts = [c["time"] for c in cam_clips[1:]]
-        mg_clips = build_mg_clips(scenes, mg_ids, cam_starts, total)
+        motion_y = layout.get("motion_y_px")
+        mg_clips = build_mg_clips(scenes, mg_ids, cam_starts, total,
+                                  y_px=motion_y, seq_h=seq_h)
         print(f"V1: {len(mg_clips)} pedaços de motion (cortes alinhados à câmera)...")
         result = client.call_tool("add_to_timeline_batch",
                                   {"sequenceId": str(seq_id), "clips": mg_clips})
         if find_key(result, "status") == "failure":
             raise MCPError(f"batch de motions falhou: {result}")
+        if motion_y is not None:
+            client.call_tool("execute_extendscript",
+                             {"script": build_position_y_jsx(0, motion_y / seq_h)})
+            print(f"motions compensados para y={motion_y}px (set fora do split-safe)")
 
         # V2: cortes da câmera
         tracks = client.call_tool("get_track_info", {"sequenceId": str(seq_id)})

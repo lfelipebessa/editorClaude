@@ -92,6 +92,18 @@ def test_mg_clips_pre_cut_at_camera_boundaries():
     assert all(c["trackIndex"] == 0 for c in clips)
 
 
+def test_mg_clips_carry_optional_y_offset():
+    # sets de motion autorados fora do split-safe (conteúdo acima de y=90)
+    # cortam o topo na percepção — o layout pode compensar com motion_y_px
+    # (1049 no caso plugin-administrativo); default = None (posição nativa)
+    scenes = [{"start": 0.0}]
+    clips = build_mg_clips(scenes, ["A"], cam_starts=[], total=5.0)
+    assert "positionY" not in clips[0]
+    clips = build_mg_clips(scenes, ["A"], cam_starts=[], total=5.0,
+                           y_px=1049, seq_h=1920)
+    assert abs(clips[0]["positionY"] - 1049 / 1920) < 1e-9
+
+
 def test_music_place_jsx_uses_overwrite_on_empty_track():
     jsx = build_music_place_jsx("000f9999", track_index=2, offset=20,
                                 total=57.5)

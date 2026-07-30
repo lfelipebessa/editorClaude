@@ -89,8 +89,13 @@ def build_music_chain(music_cfg: dict, total: float, measured_i: float) -> str:
     entra com -stream_loop -1 -t <total>: loopa se curta, corta se longa).
     Mix final: amix com duration=first e normalize=0 (o bed não pode mexer no
     nível da voz já normalizada)."""
-    parts = [f"volume={music_gain_db(music_cfg, measured_i)}dB",
-             "aresample=48000"]
+    parts = []
+    offset = music_cfg.get("start_offset", 0)
+    if offset:
+        # pula a intro lenta e entra no refrão (padrão do canal)
+        parts += [f"atrim=start={offset}", "asetpts=PTS-STARTPTS"]
+    parts += [f"volume={music_gain_db(music_cfg, measured_i)}dB",
+              "aresample=48000"]
     fade = music_cfg.get("fade_out", 1.5)
     if fade:
         parts.append(f"afade=t=out:st={round(max(0.0, total - fade), 3)}:d={fade}")

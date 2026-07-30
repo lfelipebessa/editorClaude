@@ -15,6 +15,12 @@
 - `list_sequence_tracks` devolve os clipes mas com start/end zerados (quirk do
   bridge); use a duração da sequência em `list_sequences` para validação.
 - Re-importar o mesmo arquivo cria itens duplicados no projeto (inofensivo).
+- **NUNCA usar `add_to_timeline_batch` para item de ÁUDIO**: o trackIndex
+  endereça o PAR vídeo+áudio e o overwrite varre a track de áudio
+  correspondente — em 2026-07-30 apagou 26/27 clipes da voz do usuário
+  (a música foi para "trackIndex 1" = A2, onde a voz morava). Áudio entra
+  via `track.overwriteClip` em track VAZIA (`build_music_place_jsx`, que
+  recusa track ocupada) com in/out setados no projectItem antes.
 
 ## Efeitos de áudio via MCP (validado 2026-07-30)
 

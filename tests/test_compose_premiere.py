@@ -8,7 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "adapters" / "premiere_mcp"))
 
-from compose_premiere import build_crop_jsx, build_motion_jsx, camera_transform
+from compose_premiere import (build_crop_jsx, build_motion_jsx,
+                              build_music_place_jsx, camera_transform)
 
 
 def test_camera_transform_4k_standard_framing():
@@ -50,6 +51,17 @@ def test_crop_jsx_sets_top_by_display_name():
     # inserção do Premiere 26)
     assert "numItems - 1" not in jsx
     assert "videoTracks[1]" in jsx and "JSON.stringify" in jsx
+
+
+def test_music_place_jsx_uses_overwrite_on_empty_track():
+    jsx = build_music_place_jsx("000f9999", track_index=2, offset=20,
+                                total=57.5)
+    # overwriteClip em track VAZIA — add_to_timeline_batch para áudio apagou
+    # a voz do usuário (trackIndex endereça o par vídeo+áudio); nunca de novo
+    assert "overwriteClip" in jsx and "audioTracks[2]" in jsx
+    assert "add_to_timeline" not in jsx
+    assert "não está vazia" in jsx, "precisa recusar track ocupada"
+    assert "setInPoint(20, 4)" in jsx and "setOutPoint(77.5, 4)" in jsx
 
 
 def main():

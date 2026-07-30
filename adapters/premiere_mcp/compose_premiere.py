@@ -140,38 +140,78 @@ def import_item(client: MCPStdioClient, path: Path) -> str:
     return str(item_id)
 
 
+def build_music_place_jsx(item_id: str, track_index: int, offset: float,
+                          total: float) -> str:
+    """ExtendScript que coloca a música numa track de áudio VAZIA via
+    overwriteClip, com in/out no source (pula a intro).
+
+    NUNCA usar add_to_timeline_batch para áudio: o trackIndex dele endereça o
+    PAR vídeo+áudio e o overwrite APAGOU a voz do usuário em 2026-07-30
+    (a track de destino era a A2, onde o áudio da câmera morava)."""
+    return f"""
+      var seq = app.project.activeSequence;
+      if (!seq) return JSON.stringify({{success: false, error: "sem sequência ativa"}});
+      var item = null;
+      function walk(bin) {{
+        for (var i = 0; i < bin.children.numItems; i++) {{
+          var ch = bin.children[i];
+          if (String(ch.nodeId) === "{item_id}") {{ item = ch; return; }}
+          if (ch.type === 2 && ch.children) walk(ch);
+        }}
+      }}
+      walk(app.project.rootItem);
+      if (!item) return JSON.stringify({{success: false, error: "item da música não achado"}});
+      var track = seq.audioTracks[{track_index}];
+      if (!track) return JSON.stringify({{success: false, error: "track {track_index} não existe"}});
+      if (track.clips.numItems > 0)
+        return JSON.stringify({{success: false, error: "track {track_index} não está vazia"}});
+      item.setInPoint({offset}, 4);
+      item.setOutPoint({round(offset + total, 3)}, 4);
+      track.overwriteClip(item, 0);
+      return JSON.stringify({{success: true, clips: track.clips.numItems}});
+    """
+
+
 def add_music(client: MCPStdioClient, seq_id: str, music_file: Path,
               music_cfg: dict, total: float) -> float:
-    """Música de fundo em A2 (trackIndex 1 — A1 é o áudio da câmera): importa,
-    coloca em t=0 cortada no fim do vídeo e aplica o ganho calculado da
-    medição (bed_lufs do style). Fade out fica manual — keyframe de volume
-    por script é frágil; o ganho é o que importa para o padrão."""
+    """Música de fundo numa track de áudio VAZIA (procura a primeira livre;
+    cria uma se não houver), com in/out pulando a intro (start_offset do
+    style) e ganho calculado da medição (bed_lufs). Fade out fica manual —
+    o ganho é o que importa para o padrão."""
     measured_i = measure_music_loudness(music_file)
     gain = music_gain_db(music_cfg, measured_i)
+    offset = music_cfg.get("start_offset", 0)
     mus_id = import_item(client, music_file)
-    result = client.call_tool("add_to_timeline_batch",
-                              {"sequenceId": str(seq_id),
-                               "clips": [{"projectItemId": mus_id,
-                                          "trackIndex": 1, "time": 0,
-                                          "sourceInPoint": 0,
-                                          "sourceOutPoint": total}]})
-    if find_key(result, "status") == "failure":
-        raise MCPError(f"colocar música falhou: {result}")
+
     st = client.call_tool("get_sequence_structure", {"sequenceId": str(seq_id)})
     audio_tracks = find_key(st, "audioTracks") or []
+    empty = [t.get("index") for t in audio_tracks if not t.get("clips")]
+    if empty:
+        track_index = empty[0]
+    else:
+        client.call_tool("add_track", {"sequenceId": str(seq_id),
+                                       "trackType": "audio"})
+        track_index = len(audio_tracks)
+
+    placed = client.call_tool("execute_extendscript",
+                              {"script": build_music_place_jsx(
+                                  mus_id, track_index, offset, total)})
+    if placed.get("clips") != 1:
+        raise MCPError(f"colocar música falhou: {placed}")
+
+    st = client.call_tool("get_sequence_structure", {"sequenceId": str(seq_id)})
     clip_id = None
-    for track in audio_tracks:
-        for clip in track.get("clips", []):
-            if music_file.stem in str(clip.get("name", "")):
-                clip_id = clip.get("nodeId") or clip.get("clipId")
-                break
-        if clip_id:
-            break
+    for track in find_key(st, "audioTracks") or []:
+        if track.get("index") == track_index:
+            clips = track.get("clips", [])
+            if clips:
+                clip_id = clips[0].get("nodeId") or clips[0].get("clipId")
     if not clip_id:
-        raise MCPError("clipe da música não localizado na sequência")
+        raise MCPError("clipe da música não localizado após colocar")
     client.call_tool("adjust_audio_levels", {"clipId": str(clip_id),
                                              "level": gain})
-    print(f"música: {music_file.name} ({measured_i} LUFS, ganho {gain} dB)")
+    print(f"música: {music_file.name} (A{track_index + 1}, pulando {offset}s "
+          f"de intro, {measured_i} LUFS, ganho {gain} dB)")
     return gain
 
 

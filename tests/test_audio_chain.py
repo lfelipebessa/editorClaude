@@ -75,6 +75,14 @@ def test_music_chain_volume_and_fade():
     assert chain == "volume=-27.5dB,aresample=48000,afade=t=out:st=56.0:d=1.5", chain
 
 
+def test_music_chain_skips_intro():
+    # o canal pula a intro lenta da música e entra direto no refrão
+    cfg = {"bed_lufs": -30.0, "fade_out": 1.5, "start_offset": 20}
+    chain = build_music_chain(cfg, total=57.5, measured_i=-8.67)
+    assert chain.startswith("atrim=start=20,asetpts=PTS-STARTPTS,"), chain
+    assert "volume=-21.33dB" in chain
+
+
 def test_music_chain_without_fade():
     chain = build_music_chain({"bed_lufs": -36.0, "fade_out": 0}, 30.0, -10.0)
     assert "afade" not in chain and "volume=-26.0dB" in chain
@@ -93,6 +101,7 @@ def test_style_seco_has_music():
     assert music, "styles/seco.json sem seção music"
     assert music["default"] == "musicafundo3"
     assert music["bed_lufs"] <= -30, "bed alto demais vira briga com a voz"
+    assert music["start_offset"] == 20, "canal pula a intro lenta da música"
 
 
 def main():

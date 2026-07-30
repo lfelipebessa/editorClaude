@@ -171,7 +171,9 @@ def compose(video: Path, cutlist: dict, manifest: dict, output: Path,
     for path in cap_paths:
         cmd += ["-loop", "1", "-t", str(total), "-i", str(path)]
     if music_file:
-        cmd += ["-stream_loop", "-1", "-t", str(total), "-i", str(music_file)]
+        # sem stream_loop: com start_offset o loop repetiria a intro pulada;
+        # música mais curta que o vídeo só termina antes (aviso no console)
+        cmd += ["-i", str(music_file)]
     cmd += ["-filter_complex_script", script,
             "-map", label, "-map", map_audio,
             "-c:v", "libx264", "-crf", "18", "-preset", "fast", "-r", str(fps),

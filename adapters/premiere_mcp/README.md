@@ -56,14 +56,18 @@ Fragilidades descobertas no E2E de cor:
 - displayNames do Lumetri vêm em inglês (Exposure/Contrast/Shadows/...) neste
   install; propriedades repetem nome entre seções (Saturation em Basic e
   Creative) — o JSX usa guard para setar só a primeira ocorrência.
-- **Replicar grade fina (Curvas/Creative/HSL) entre clipes**: usar
-  `build_copy_effects_jsx` — cópia propriedade a propriedade POR ÍNDICE.
-  A tool `copy_effects_between_clips` do vendor casa por displayName e erra
-  em propriedades sem nome/duplicadas (onde as curvas vivem). Limitação
-  conhecida: color pickers (White Balance eyedropper, Set/Add/Remove color,
-  seletores Hue-vs) são números 64-bit que o ExtendScript não round-tripa —
-  a cópia pula esses (guard > 2^32); são estado de UI, não afetam o render
-  (validado por comparação visual de frames exportados).
+- **Replicar grade entre clipes**: `build_copy_effects_jsx` copia por índice
+  (a tool do vendor casa por displayName e erra em propriedades sem nome/
+  duplicadas) e cobre TODOS os escalares + Sharpen + Noise. **Limite duro da
+  API**: RGB Curves por canal e Hue Saturation Curves do Lumetri NÃO existem
+  em nenhuma propriedade enumerável do ExtendScript — vivem só no estado
+  interno do efeito (o param "Blob" é snapshot defasado, não fonte). Color
+  pickers (White Balance, Set/Add/Remove color, seletores Hue-vs) divergem e
+  IGNORAM setValue (testado: grava e relê o valor antigo). Consequência:
+  grade que usa curvas/HSL só replica via **Paste Attributes nativo**
+  (Cmd+C no clipe fonte -> selecionar alvos -> Cmd+Opt+V marcando Lumetri
+  Color e Noise). O adaptador automatiza o resto; curvas finas são passo
+  manual único por timeline.
 - O efeito **Noise do Premiere 2026 é o novo, estilo film grain**
   (Intensity/Shadows/Midtones/Highlights/Saturation/Blend Mode) — o clássico
   "Amount of Noise" não existe mais. Grain do finish vira Intensity (grain×3)

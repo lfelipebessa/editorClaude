@@ -78,15 +78,26 @@ Dado um vídeo bruto `<video>`:
    com `brief.md` e clips renderizados em `out/<nome>/clips/`), este é o
    FORMATO PADRÃO do Reel: motions em cima, câmera embaixo, legendas na divisa.
 
+   **Fluxo em DUAS ETAPAS com checkpoint manual (padrão desde 2026-07-30 —
+   o corte automático sempre precisa de ajustes finos do usuário):**
+
    ```bash
    # 1. cola: manifest resolvido (âncoras textuais do brief) + SRT MAIÚSCULO
    .venv/bin/python src/prepare_compose.py output/transcript_<slug>.json output/cutlist_<slug>.json ~/development/MotionSkills/motion-graphics/src/videos/<nome>
    # 2. REVISAR o SRT contra o brief (transcrição erra: cloud->Claude,
    #    admira->ADMIN...) — corrigir SÓ texto, nunca timestamps
-   # 3. timeline editável no Premiere — SAÍDA PADRÃO (o usuário sempre ajusta
-   #    antes de exportar; decisão de 2026-07-30):
-   .venv/bin/python adapters/premiere_mcp/compose_premiere.py <video> output/cutlist_<slug>.json output/motion_manifest_<slug>.json --srt output/captions_<slug>.srt --sequence-name reel_<slug>
+   # 3. ETAPA CORTE: timeline só com câmera + voz (V1 vazia -> Close Gap
+   #    funciona; usuário faz os ajustes manuais de corte com liberdade)
+   .venv/bin/python adapters/premiere_mcp/compose_premiere.py <video> output/cutlist_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --somente-corte
+   # 4. USUÁRIO edita o corte e avisa quando fechou
+   # 5. ETAPA FINALIZAR: lê o corte FINAL da timeline e sobe tudo já
+   #    sincronizado (motions fatiados nos cortes reais, música aparada ao
+   #    fim do conteúdo, legendas do áudio atual com texto corrigido)
+   .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --corrected-srt output/captions_<slug>.srt
    ```
+   Se o usuário editar DEPOIS do finalizar, refazer só a legenda com
+   adapters/premiere_mcp/recaption_premiere.py (mesmos argumentos de
+   transcript/--corrected-srt).
    O mp4 automático (compose_ffmpeg, mesmos argumentos + `-o ~/Downloads/
    reel_<slug>.mp4`) NÃO roda por padrão — só quando o usuário pedir preview
    rápido ou publicação direta sem ajustes.

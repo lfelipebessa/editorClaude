@@ -279,7 +279,8 @@ def add_music(client: MCPStdioClient, seq_id: str, music_file: Path,
 def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
             sequence_name: str, timeout: float,
             music_file: Path | None = None,
-            music_cfg: dict | None = None) -> None:
+            music_cfg: dict | None = None,
+            somente_corte: bool = False) -> None:
     segments = cutlist["segments"]
     total = round(sum(s["end"] - s["start"] for s in segments), 3)
     scenes = manifest["scenes"]
@@ -294,10 +295,20 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
         info = client.call_tool("get_project_info", {})
         print(f"projeto aberto: {info.get('name')}")
 
-        print("importando mídia (câmera + motions + srt)...")
-        cam_id = import_item(client, video)
-        mg_ids = [import_item(client, Path(sc["clip"])) for sc in scenes]
-        srt_id = import_item(client, srt) if srt else None
+        if somente_corte:
+            # etapa 1: só câmera + voz; o 1º motion entra apenas como molde
+            # de formato da sequência (1080x1920 @30). Motions/legenda/música
+            # sobem na etapa 2 (finalize_premiere), sincronizados ao corte
+            # FINAL do usuário.
+            print("importando mídia (etapa CORTE: câmera + molde de formato)...")
+            cam_id = import_item(client, video)
+            mg_ids = [import_item(client, Path(scenes[0]["clip"]))]
+            srt_id = None
+        else:
+            print("importando mídia (câmera + motions + srt)...")
+            cam_id = import_item(client, video)
+            mg_ids = [import_item(client, Path(sc["clip"])) for sc in scenes]
+            srt_id = import_item(client, srt) if srt else None
 
         # sequência vertical sem diálogo modal: nasce de um clipe de motion
         # (1080x1920 @30fps) e vira uma duplicata vazia — mesma dança validada
@@ -327,19 +338,22 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
 
         # V1: motions nos tempos resolvidos, PRÉ-CORTADOS nos cortes da câmera
         cam_clips = build_batch(cutlist, cam_id, fps=layout.get("fps", 30))
-        cam_starts = [c["time"] for c in cam_clips[1:]]
-        motion_y = layout.get("motion_y_px")
-        mg_clips = build_mg_clips(scenes, mg_ids, cam_starts, total,
-                                  y_px=motion_y, seq_h=seq_h)
-        print(f"V1: {len(mg_clips)} pedaços de motion (cortes alinhados à câmera)...")
-        result = client.call_tool("add_to_timeline_batch",
-                                  {"sequenceId": str(seq_id), "clips": mg_clips})
-        if find_key(result, "status") == "failure":
-            raise MCPError(f"batch de motions falhou: {result}")
-        if motion_y is not None:
-            client.call_tool("execute_extendscript",
-                             {"script": build_position_y_jsx(0, motion_y / seq_h)})
-            print(f"motions compensados para y={motion_y}px (set fora do split-safe)")
+        if not somente_corte:
+            cam_starts = [c["time"] for c in cam_clips[1:]]
+            motion_y = layout.get("motion_y_px")
+            mg_clips = build_mg_clips(scenes, mg_ids, cam_starts, total,
+                                      y_px=motion_y, seq_h=seq_h)
+            print(f"V1: {len(mg_clips)} pedaços de motion (cortes alinhados à câmera)...")
+            result = client.call_tool("add_to_timeline_batch",
+                                      {"sequenceId": str(seq_id), "clips": mg_clips})
+            if find_key(result, "status") == "failure":
+                raise MCPError(f"batch de motions falhou: {result}")
+            if motion_y is not None:
+                client.call_tool("execute_extendscript",
+                                 {"script": build_position_y_jsx(0, motion_y / seq_h)})
+                print(f"motions compensados para y={motion_y}px (set fora do split-safe)")
+        else:
+            mg_clips = []
 
         # V2: cortes da câmera
         tracks = client.call_tool("get_track_info", {"sequenceId": str(seq_id)})
@@ -382,10 +396,16 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
                              {"sequenceId": str(seq_id),
                               "projectItemId": srt_id})
 
-        if music_file and music_cfg:
+        if music_file and music_cfg and not somente_corte:
             add_music(client, str(seq_id), music_file, music_cfg, total)
 
         client.call_tool("save_project", {})
+        if somente_corte:
+            print(f"etapa CORTE pronta: '{sequence_name}' só com câmera + voz "
+                  f"({len(cam_clips)} cortes). Edite à vontade (Close Gap "
+                  f"funciona — V1 vazia); quando fechar o corte, rode "
+                  f"finalize_premiere.py para subir motions + música + legendas.")
+            return
         print(f"sequência '{sequence_name}' montada: {len(mg_clips)} motions + "
               f"{len(cam_clips)} cortes + captions (~{total:.1f}s). Projeto salvo.")
         print("Lembrete: cor = Paste Attributes da referência em V2 "
@@ -408,6 +428,10 @@ def main() -> None:
                         help="música da biblioteca assets/music (nome sem "
                              "extensão) ou caminho; default = a do style")
     parser.add_argument("--no-music", action="store_true")
+    parser.add_argument("--somente-corte", action="store_true",
+                        help="etapa 1 do fluxo do canal: só câmera + voz; "
+                             "motions/legenda/música sobem depois via "
+                             "finalize_premiere.py, sincronizados ao corte final")
     args = parser.parse_args()
 
     for p in (args.video, args.cutlist, args.manifest):
@@ -427,7 +451,7 @@ def main() -> None:
         music_file = resolve_music_file(music_cfg, args.music)
 
     compose(args.video, cutlist, manifest, args.srt, args.sequence_name,
-            args.timeout, music_file, music_cfg)
+            args.timeout, music_file, music_cfg, args.somente_corte)
 
 
 if __name__ == "__main__":

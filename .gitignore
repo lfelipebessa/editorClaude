@@ -5,3 +5,4 @@ output/
 *.wav
 .DS_Store
 .maestri/
+tests/fixture_gaps.mp4

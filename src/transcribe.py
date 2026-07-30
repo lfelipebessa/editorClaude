@@ -32,6 +32,25 @@ def extract_audio(video: Path, wav: Path) -> None:
     )
 
 
+def detect_silences(wav: Path, noise_db: int = -35, min_dur: float = 0.5) -> list[dict]:
+    """Detecta silêncios no áudio. O aligner do WhisperX às vezes estica palavras
+    por cima de pausas, então o transcript sozinho não basta para achar silêncio."""
+    out = subprocess.run(
+        [FFMPEG, "-i", str(wav), "-af", f"silencedetect=noise={noise_db}dB:d={min_dur}",
+         "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    silences, start = [], None
+    for line in out.stderr.splitlines():
+        if "silence_start:" in line:
+            start = float(line.split("silence_start:")[1].strip())
+        elif "silence_end:" in line and start is not None:
+            end = float(line.split("silence_end:")[1].split("|")[0].strip())
+            silences.append({"start": round(start, 3), "end": round(end, 3)})
+            start = None
+    return silences
+
+
 def transcribe(video: Path, model_name: str, language: str | None,
                device: str, batch_size: int) -> dict:
     import whisperx
@@ -41,6 +60,7 @@ def transcribe(video: Path, model_name: str, language: str | None,
     with tempfile.TemporaryDirectory() as tmp:
         wav = Path(tmp) / "audio.wav"
         extract_audio(video, wav)
+        silences = detect_silences(wav)
 
         model = whisperx.load_model(model_name, device, compute_type=compute_type,
                                     language=language)
@@ -75,6 +95,7 @@ def transcribe(video: Path, model_name: str, language: str | None,
         "source": {"path": str(video.resolve()), "duration": round(probe_duration(video), 3)},
         "language": lang,
         "model": model_name,
+        "silences": silences,
         "segments": segments,
     }
 

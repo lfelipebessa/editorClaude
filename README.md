@@ -19,6 +19,12 @@ vídeo bruto ──▶ src/transcribe.py ──▶ transcript.json (timestamps p
 O núcleo (`src/`) é agnóstico de editor: produz apenas o transcript e a cut-list.
 Os adaptadores (`adapters/`) consomem a cut-list e materializam o corte em um destino específico.
 
+O transcript JSON inclui, além dos segmentos com palavras, um campo `silences`
+(spans detectados no áudio via ffmpeg `silencedetect`). Ele existe porque o aligner
+do WhisperX às vezes estica uma palavra por cima de uma pausa longa, fazendo o
+silêncio sumir dos timestamps — o `cutlist.py` usa os `silences` como cortes
+obrigatórios, independentes do texto.
+
 ## Uso
 
 ```bash

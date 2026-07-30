@@ -123,7 +123,35 @@ def remove_repetitions(words: list[dict]) -> None:
                 break
 
 
-def build_intervals(words: list[dict], duration: float) -> tuple[list[dict], list[dict]]:
+def subtract_silences(segments: list[dict], silences: list[dict]) -> list[dict]:
+    """Corta silêncios detectados no áudio de dentro dos segmentos mantidos.
+
+    Necessário porque o aligner às vezes estica uma palavra por cima da pausa,
+    fazendo o silêncio 'desaparecer' dos timestamps do transcript. O texto dos
+    pedaços resultantes é aproximado (herdado do segmento original).
+    """
+    for sil in silences:
+        cut_start = sil["start"] + PAD_AFTER
+        cut_end = sil["end"] - PAD_BEFORE
+        if cut_end - cut_start < MAX_SILENCE:
+            continue
+        result = []
+        for seg in segments:
+            if cut_end <= seg["start"] or cut_start >= seg["end"]:
+                result.append(seg)
+                continue
+            left = {**seg, "end": round(max(seg["start"], cut_start), 3)}
+            right = {**seg, "start": round(min(seg["end"], cut_end), 3)}
+            if left["end"] - left["start"] >= 0.1:
+                result.append(left)
+            if right["end"] - right["start"] >= 0.1:
+                result.append(right)
+        segments = result
+    return segments
+
+
+def build_intervals(words: list[dict], duration: float,
+                    silences: list[dict]) -> tuple[list[dict], list[dict]]:
     """Constrói segmentos mantidos (com padding) e lista de removidos.
 
     Um segmento quebra em pausa > MAX_SILENCE ou quando há palavra descartada
@@ -164,6 +192,8 @@ def build_intervals(words: list[dict], duration: float) -> tuple[list[dict], lis
             "reason": "speech",
         })
 
+    out = subtract_silences(out, silences)
+
     removed = []
     dropped = [w for w in words if not w["keep"]]
     for w in dropped:
@@ -199,7 +229,7 @@ def generate_cutlist(transcript: dict) -> dict:
     remove_false_starts(words)
     remove_repetitions(words)
 
-    segments, removed = build_intervals(words, duration)
+    segments, removed = build_intervals(words, duration, transcript.get("silences", []))
     kept_duration = sum(s["end"] - s["start"] for s in segments)
     return {
         "version": 1,

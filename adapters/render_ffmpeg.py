@@ -18,22 +18,40 @@ FFMPEG = "/opt/homebrew/bin/ffmpeg"
 FFPROBE = "/opt/homebrew/bin/ffprobe"
 
 
-def has_audio(video: Path) -> bool:
+def pick_streams(video: Path) -> tuple[int, int | None]:
+    """Seleciona a stream de vídeo principal e a primeira de áudio.
+
+    Footage real (DJI, GoPro...) traz streams extras como thumbnail mjpeg
+    (attached_pic) que não podem entrar no corte.
+    """
     out = subprocess.run(
-        [FFPROBE, "-v", "error", "-select_streams", "a", "-show_entries",
-         "stream=index", "-of", "csv=p=0", str(video)],
+        [FFPROBE, "-v", "error", "-show_entries",
+         "stream=index,codec_type:stream_disposition=attached_pic",
+         "-of", "json", str(video)],
         capture_output=True, text=True, check=True,
     )
-    return bool(out.stdout.strip())
+    video_idx, audio_idx = None, None
+    for s in json.loads(out.stdout)["streams"]:
+        attached = s.get("disposition", {}).get("attached_pic", 0)
+        if s["codec_type"] == "video" and not attached and video_idx is None:
+            video_idx = s["index"]
+        elif s["codec_type"] == "audio" and audio_idx is None:
+            audio_idx = s["index"]
+    if video_idx is None:
+        sys.exit("nenhuma stream de vídeo principal encontrada")
+    return video_idx, audio_idx
 
 
-def build_filter(segments: list[dict], with_audio: bool) -> str:
+def build_filter(segments: list[dict], video_idx: int, audio_idx: int | None) -> str:
+    with_audio = audio_idx is not None
     lines = []
     for i, seg in enumerate(segments):
         start, end = seg["start"], seg["end"]
-        lines.append(f"[0:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}];")
+        lines.append(f"[0:{video_idx}]trim=start={start}:end={end},"
+                     f"setpts=PTS-STARTPTS[v{i}];")
         if with_audio:
-            lines.append(f"[0:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{i}];")
+            lines.append(f"[0:{audio_idx}]atrim=start={start}:end={end},"
+                         f"asetpts=PTS-STARTPTS[a{i}];")
     n = len(segments)
     if with_audio:
         inputs = "".join(f"[v{i}][a{i}]" for i in range(n))
@@ -49,8 +67,9 @@ def render(video: Path, cutlist: dict, output: Path) -> None:
     if not segments:
         sys.exit("cut-list sem segmentos: nada a renderizar")
 
-    audio = has_audio(video)
-    filter_graph = build_filter(segments, audio)
+    video_idx, audio_idx = pick_streams(video)
+    filter_graph = build_filter(segments, video_idx, audio_idx)
+    audio = audio_idx is not None
 
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         f.write(filter_graph)

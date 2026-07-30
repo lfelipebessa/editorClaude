@@ -51,6 +51,12 @@ def build_color_chain(color_cfg: dict) -> str:
             sys.exit(f"LUT configurada no style não encontrada: {lut_path}")
         parts.append(f"lut3d=file={lut_path}")
     adjust = color_cfg.get("adjust", {})
+    curve = adjust.get("curve_s")
+    if curve:
+        parts.append(f"curves=master='{curve}'")
+    vibrance = adjust.get("vibrance", 0.0)
+    if vibrance:
+        parts.append(f"vibrance=intensity={vibrance}")
     ev = adjust.get("exposure_ev", 0.0)
     if ev:
         parts.append(f"exposure=exposure={ev}")

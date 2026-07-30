@@ -46,13 +46,40 @@ def test_missing_lut_fails_clearly():
         raise AssertionError("LUT inexistente devia falhar")
 
 
+def test_curve_s_and_vibrance_chain():
+    cfg = {"scope": "camera", "lut": None,
+           "adjust": {"exposure_ev": 0.06, "contrast": 1.0, "saturation": 1.0,
+                      "gamma": 1.0,
+                      "curve_s": "0/0 0.22/0.19 0.5/0.52 0.78/0.82 1/1",
+                      "vibrance": 0.35}}
+    chain = build_color_chain(cfg)
+    assert chain == ("curves=master='0/0 0.22/0.19 0.5/0.52 0.78/0.82 1/1',"
+                     "vibrance=intensity=0.35,exposure=exposure=0.06"), chain
+
+
+def test_curve_vibrance_neutral_when_absent():
+    cfg = {"lut": None, "adjust": {"exposure_ev": 0.0, "contrast": 1.0,
+                                   "saturation": 1.0, "gamma": 1.0,
+                                   "curve_s": None, "vibrance": 0.0}}
+    assert build_color_chain(cfg) == ""
+
+
+def test_curves_come_before_eq():
+    cfg = {"lut": None,
+           "adjust": {"curve_s": "0/0 1/1", "vibrance": 0.2, "contrast": 1.1}}
+    chain = build_color_chain(cfg)
+    assert "curves=" in chain and "vibrance=" in chain and "eq=" in chain, chain
+    assert chain.index("curves=") < chain.index("vibrance=") < chain.index("eq="), chain
+
+
 def test_style_seco_has_color_section():
     color = load_style("seco").get("color")
     assert color, "styles/seco.json sem seção color"
     assert color["scope"] == "camera", "cor é só para footage de câmera"
     assert "adjust" in color and "lut" in color
     chain = build_color_chain(color)
-    assert "eq=" in chain, f"ajustes do seco deviam gerar cadeia: {chain!r}"
+    assert "curves=" in chain and "vibrance=" in chain, \
+        f"grade do seco devia usar curva S + vibrance: {chain!r}"
 
 
 def main():

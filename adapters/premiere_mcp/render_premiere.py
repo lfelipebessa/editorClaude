@@ -163,13 +163,26 @@ def lumetri_from_style(color_cfg: dict) -> dict | None:
     vibrance = adjust.get("vibrance", 0.0)
     if vibrance:
         params["Vibrance"] = round(vibrance * 100)
+    sharpen = color_cfg.get("finish", {}).get("sharpen", 0.0)
+    if sharpen:
+        params["Sharpen"] = round(sharpen * 75)
     return params or None
 
 
-def build_lumetri_jsx(params: dict, track_index: int = 0) -> str:
-    """ExtendScript que aplica UM Lumetri Color por clipe da track, em lote.
+def noise_from_style(color_cfg: dict) -> int | None:
+    """Grain do finish vira efeito Noise do Premiere (Amount of Noise em %).
+    O noise do ffmpeg é sigma em 8-bit (~2% com strength 5); ×0.8 aproxima."""
+    grain = color_cfg.get("finish", {}).get("grain", 0)
+    return round(grain * 0.8) if grain else None
+
+
+def build_lumetri_jsx(params: dict, track_index: int = 0,
+                      noise_amount: int | None = None) -> str:
+    """ExtendScript que aplica UM Lumetri Color por clipe da track, em lote
+    (+ efeito Noise para o grain, se noise_amount vier).
 
     Uma chamada MCP para a timeline inteira (por clipe seriam 5xN round-trips).
+    Idempotente: reusa efeito existente no clipe em vez de empilhar outro.
     O guard `done` protege propriedades com displayName duplicado entre seções
     do Lumetri (ex.: Saturation existe em Basic e Creative — só a primeira leva).
     """
@@ -177,13 +190,36 @@ def build_lumetri_jsx(params: dict, track_index: int = 0) -> str:
         f'if (!done["{name}"] && p.displayName === "{name}") '
         f'{{ p.setValue({json.dumps(value)}, true); done["{name}"] = true; }}'
         for name, value in params.items())
+    noise_block = ""
+    if noise_amount:
+        noise_block = f"""
+        var noiseComp = ensureEffect(item, domClip, "Noise");
+        if (noiseComp) {{
+          var doneN = {{}};
+          for (var n = 0; n < noiseComp.properties.numItems; n++) {{
+            var pn = noiseComp.properties[n];
+            try {{
+              if (!doneN["a"] && pn.displayName === "Amount of Noise") {{ pn.setValue({noise_amount}, true); doneN["a"] = true; }}
+              if (!doneN["c"] && pn.displayName === "Use Color Noise") {{ pn.setValue(false, true); doneN["c"] = true; }}
+            }} catch (eN) {{}}
+          }}
+        }}"""
     return f"""
       app.enableQE();
-      var effect = qe.project.getVideoEffectByName("Lumetri Color");
-      if (!effect) return JSON.stringify({{success: false, error: "Lumetri Color indisponível"}});
+      var lumetri = qe.project.getVideoEffectByName("Lumetri Color");
+      if (!lumetri) return JSON.stringify({{success: false, error: "Lumetri Color indisponível"}});
       var seq = app.project.activeSequence;
       var qeSeq = qe.project.getActiveSequence();
       if (!seq || !qeSeq) return JSON.stringify({{success: false, error: "sem sequência ativa"}});
+      function ensureEffect(qeItem, domClip, name) {{
+        for (var k = 0; k < domClip.components.numItems; k++) {{
+          if (String(domClip.components[k].displayName) === name) return domClip.components[k];
+        }}
+        var fx = name === "Lumetri Color" ? lumetri : qe.project.getVideoEffectByName(name);
+        if (!fx) return null;
+        qeItem.addVideoEffect(fx);
+        return domClip.components[domClip.components.numItems - 1];
+      }}
       var qeTrack = qeSeq.getVideoTrackAt({track_index});
       var domTrack = seq.videoTracks[{track_index}];
       var applied = 0, clipIdx = 0;
@@ -193,24 +229,14 @@ def build_lumetri_jsx(params: dict, track_index: int = 0) -> str:
         try {{ kind = String(item.type); }} catch (e) {{}}
         if (kind !== "Clip") continue;
         var domClip = domTrack.clips[clipIdx];
-        var comp = null;
-        for (var k = 0; k < domClip.components.numItems; k++) {{
-          if (String(domClip.components[k].displayName) === "Lumetri Color") {{
-            comp = domClip.components[k];
-            break;
-          }}
-        }}
-        if (!comp) {{
-          item.addVideoEffect(effect);
-          comp = domClip.components[domClip.components.numItems - 1];
-        }}
+        var comp = ensureEffect(item, domClip, "Lumetri Color");
         var done = {{}};
         for (var j = 0; j < comp.properties.numItems; j++) {{
           var p = comp.properties[j];
           try {{
             {sets}
           }} catch (e2) {{}}
-        }}
+        }}{noise_block}
         applied++; clipIdx++;
       }}
       return JSON.stringify({{success: true, applied: applied}});
@@ -336,10 +362,12 @@ def render(video: Path, cutlist: dict, project_dir: Path, project_name: str,
 
         lumetri = lumetri_from_style(color_cfg) if color_cfg else None
         if lumetri:
-            print(f"aplicando Lumetri Color nos clipes: {lumetri}...")
+            noise = noise_from_style(color_cfg)
+            print(f"aplicando Lumetri Color nos clipes: {lumetri} + noise {noise}...")
             client.call_tool("set_active_sequence", {"sequenceId": str(seq_id)})
-            graded = client.call_tool("execute_extendscript",
-                                      {"script": build_lumetri_jsx(lumetri)})
+            graded = client.call_tool(
+                "execute_extendscript",
+                {"script": build_lumetri_jsx(lumetri, noise_amount=noise)})
             applied = graded.get("applied")
             if applied != len(clips):
                 raise MCPError(f"Lumetri aplicado em {applied} de {len(clips)} clipes")

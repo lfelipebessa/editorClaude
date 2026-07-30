@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "adapters"))
 
-from render_ffmpeg import build_color_chain, load_style
+from render_ffmpeg import build_color_chain, build_finish_chain, load_style
 
 
 def test_adjust_only_chain():
@@ -70,6 +70,23 @@ def test_curves_come_before_eq():
     chain = build_color_chain(cfg)
     assert "curves=" in chain and "vibrance=" in chain and "eq=" in chain, chain
     assert chain.index("curves=") < chain.index("vibrance=") < chain.index("eq="), chain
+
+
+def test_finish_chain_sharpen_and_grain():
+    cfg = {"finish": {"sharpen": 0.4, "grain": 5}}
+    chain = build_finish_chain(cfg)
+    assert chain == "unsharp=5:5:0.4:5:5:0,noise=c0s=5:c0f=t", chain
+
+
+def test_finish_neutral_produces_empty_chain():
+    assert build_finish_chain({}) == ""
+    assert build_finish_chain({"finish": {"sharpen": 0.0, "grain": 0}}) == ""
+
+
+def test_style_seco_has_finish():
+    chain = build_finish_chain(load_style("seco")["color"])
+    assert "unsharp=" in chain and "noise=" in chain, \
+        f"finish do seco devia ter sharpen e grain: {chain!r}"
 
 
 def test_style_seco_has_color_section():

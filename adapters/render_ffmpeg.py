@@ -68,6 +68,21 @@ def build_color_chain(color_cfg: dict) -> str:
     return ",".join(parts)
 
 
+def build_finish_chain(color_cfg: dict) -> str:
+    """Acabamento pós-scale: nitidez (unsharp só no luma) + grain (noise só no
+    luma, temporal). Roda DEPOIS do resize da plataforma — quantidades são
+    calibradas para a resolução de saída, não a da câmera."""
+    finish = color_cfg.get("finish", {})
+    parts = []
+    sharpen = finish.get("sharpen", 0.0)
+    if sharpen:
+        parts.append(f"unsharp=5:5:{sharpen}:5:5:0")
+    grain = finish.get("grain", 0)
+    if grain:
+        parts.append(f"noise=c0s={grain}:c0f=t")
+    return ",".join(parts)
+
+
 def build_audio_chain(audio_cfg: dict, measured: dict | None) -> str:
     """Cadeia de áudio a partir do style: loudnorm (+ segunda passada se houver
     medição) -> aresample -> hard limiter de segurança.
@@ -216,6 +231,11 @@ def render(video: Path, cutlist: dict, output: Path,
         src_w, src_h = probe_resolution(video, video_idx)
         filter_graph += f";\n{map_video}{vertical_filter(src_w, src_h, platform, x_offset)}[vf]"
         map_video = "[vf]"
+    if color_cfg:
+        finish = build_finish_chain(color_cfg)
+        if finish:
+            filter_graph += f";\n{map_video}{finish}[vt]"
+            map_video = "[vt]"
 
     map_audio = "[a]"
     if audio and audio_cfg:

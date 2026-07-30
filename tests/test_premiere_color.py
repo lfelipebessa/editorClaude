@@ -10,13 +10,33 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "adapters"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "adapters" / "premiere_mcp"))
 
 from render_ffmpeg import load_style
-from render_premiere import build_lumetri_jsx, lumetri_from_style, parse_tool_payload
+from render_premiere import (build_lumetri_jsx, lumetri_from_style,
+                             noise_from_style, parse_tool_payload)
 
 
 def test_lumetri_from_style_seco():
     params = lumetri_from_style(load_style("seco")["color"])
-    assert params == {"Exposure": 0.06, "Contrast": 12, "Shadows": -12,
-                      "Highlights": 16, "Vibrance": 35}, params
+    assert params == {"Exposure": 0.07, "Contrast": 13, "Shadows": -12,
+                      "Highlights": 20, "Saturation": 106, "Vibrance": 58,
+                      "Sharpen": 30}, params
+
+
+def test_noise_from_style_seco():
+    assert noise_from_style(load_style("seco")["color"]) == 4
+
+
+def test_noise_neutral_returns_none():
+    assert noise_from_style({"finish": {"grain": 0}}) is None
+    assert noise_from_style({}) is None
+
+
+def test_jsx_adds_noise_effect_when_requested():
+    jsx = build_lumetri_jsx({"Exposure": 0.07}, noise_amount=4)
+    assert '"Noise"' in jsx, "devia garantir o efeito Noise no clipe"
+    assert '"Amount of Noise"' in jsx and "setValue(4, true)" in jsx
+    assert '"Use Color Noise"' in jsx, "grain deve ser só luma (color noise off)"
+    jsx_sem = build_lumetri_jsx({"Exposure": 0.07})
+    assert '"Noise"' not in jsx_sem and "Amount of Noise" not in jsx_sem
 
 
 def test_lumetri_neutral_returns_none():

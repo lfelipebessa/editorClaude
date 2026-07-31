@@ -83,7 +83,7 @@
   "music": {
     "default": "musicafundo3",
     "dir": "assets/music",
-    "bed_lufs": -30.0,
+    "bed_lufs": -25.0,
     "fade_out": 1.5,
     "start_offset": 20
   }

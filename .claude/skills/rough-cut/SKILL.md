@@ -160,6 +160,12 @@ Dado um vídeo bruto `<video>`:
    mostrar o look do QuickTime: Lumetri > Settings > Viewer Gamma 1.96 e só
    então retocar a grade. NUNCA compensar saturação/contraste às cegas com o
    viewer em 2.4.
+   Para exportar JÁ compensado (grade da timeline intacta): LUTs do canal em
+   `assets/luts/` — `qt_gamma_comp_50.cube` (padrão para Instagram: celular,
+   que fica entre os dois gammas, bate com o preview) e `qt_gamma_comp_100.cube`
+   (QuickTime do Mac bate com o preview). Aplicar SÓ no export: dialog de
+   Export > Effects > Lumetri Look/LUT > Select > browse até o .cube. Nunca
+   aplicar na timeline junto com o export-LUT (dobraria a compensação).
 
 4. **Reportar** ao final, sempre:
    - duração original vs final;

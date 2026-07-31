@@ -153,6 +153,14 @@ Dado um vídeo bruto `<video>`:
    (NUNCA marcar Motion nem Crop); (3) travar a track da música antes de
    editar (ripple não deve encolher o bed).
 
+3c. **Export "lavado"/cinza vs preview = QuickTime gamma shift**, não defeito:
+   o Premiere exibe Rec.709 a gamma 2.4 e o QuickTime do macOS a ~1.96 — o
+   arquivo sai correto (conferir tags com ffprobe: bt709/bt709/bt709). Julgar
+   cor no destino real (celular/Instagram, não QuickTime). Para o preview
+   mostrar o look do QuickTime: Lumetri > Settings > Viewer Gamma 1.96 e só
+   então retocar a grade. NUNCA compensar saturação/contraste às cegas com o
+   viewer em 2.4.
+
 4. **Reportar** ao final, sempre:
    - duração original vs final;
    - número de segmentos mantidos e cortes por motivo (silence, stutter, false_start,

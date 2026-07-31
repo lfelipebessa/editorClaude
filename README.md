@@ -2,6 +2,108 @@
 
 Editor automático de vídeo por fases. Fase 1: **rough cut** — remove silêncios, gaguejos, falsos começos e redundâncias de um vídeo bruto, sem intervenção manual.
 
+## Começando do zero (guia para quem chegou agora)
+
+### O que é isto, em 30 segundos
+
+Este repositório é um pipeline de edição de vídeo operado por IA. A ideia central:
+scripts Python fazem o trabalho pesado (transcrever, decidir cortes, renderizar) e
+o **Claude Code** atua como operador — você abre o Claude Code na pasta do projeto,
+pede "edita esse vídeo", e ele executa o fluxo inteiro sozinho, porque o repositório
+já ensina a ele como trabalhar:
+
+- `.claude/skills/rough-cut/` — a "receita" que o Claude Code segue ao editar um
+  vídeo (ordem dos passos, preset do canal, o que nunca fazer).
+- `.mcp.json` — dá ao Claude Code acesso direto ao Premiere Pro (opcional, ~280
+  ferramentas via MCP).
+- `styles/seco.json` — o estilo do canal (agressividade do corte, áudio, cor,
+  plataformas de saída). Fonte única de verdade: mudou o estilo, muda aqui.
+
+Você NÃO precisa do Premiere para usar o projeto — o caminho padrão renderiza
+mp4 direto com ffmpeg. O Premiere é uma saída alternativa para quem quer
+continuar a edição manualmente numa timeline.
+
+### O que você precisa ter instalado
+
+| Ferramenta | Para quê | Como instalar |
+|---|---|---|
+| macOS + [Homebrew](https://brew.sh) | os caminhos do projeto assumem Mac | — |
+| ffmpeg | extração de áudio, render, loudness | `brew install ffmpeg` |
+| Python 3.11+ | roda o pipeline (testado com 3.11.8) | `brew install python@3.11` ou pyenv |
+| [Claude Code](https://claude.com/claude-code) | o operador do pipeline | `npm install -g @anthropic-ai/claude-code` |
+| Node.js 18+ | *(opcional)* só para o MCP do Premiere | `brew install node` |
+| Adobe Premiere Pro | *(opcional)* saída em timeline editável | Creative Cloud |
+
+### Instalação
+
+```bash
+git clone https://github.com/lfelipebessa/editorClaude.git
+cd editorClaude
+
+# venv + dependências (WhisperX puxa PyTorch — a instalação demora alguns minutos)
+python3.11 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+# teste rápido: deve imprimir a ajuda do transcritor
+.venv/bin/python src/transcribe.py --help
+```
+
+Na **primeira transcrição** o WhisperX baixa os modelos (~2–3 GB, uma vez só).
+Roda em CPU; num Apple Silicon um vídeo de ~10 min transcreve em poucos minutos.
+
+### Como usar com o SEU Claude Code
+
+```bash
+cd editorClaude
+claude
+```
+
+Na primeira vez o Claude Code pergunta se você confia no `.mcp.json` do projeto —
+aprove (ou recuse, se não for usar o Premiere; o resto funciona igual). Depois é
+conversa:
+
+> edita esse vídeo: ~/Downloads/video_bruto.mp4
+
+A skill `rough-cut` assume e executa o fluxo do canal: acelera 1.2x → transcreve
+em pt → gera a cut-list com o preset `seco` → renderiza para `~/Downloads`, com
+áudio normalizado e cor aplicada. Você também pode pedir variações:
+
+> faz a versão vertical pra Reel
+> monta a timeline no Premiere em vez de renderizar mp4
+> deixa o corte menos agressivo
+
+Para mudanças de estilo permanentes, peça para ele editar `styles/seco.json` —
+nunca ajuste parâmetros inline (regra da skill).
+
+Prefere rodar na mão, sem Claude? Todos os comandos estão na seção **Uso** abaixo.
+
+### Setup opcional: Premiere Pro via MCP
+
+O servidor MCP do Premiere vive em `vendor/Adobe_Premiere_Pro_MCP` e **não vem
+no clone** (é gitignored). Para habilitar:
+
+```bash
+git clone https://github.com/hetpatel-11/Adobe_Premiere_Pro_MCP vendor/Adobe_Premiere_Pro_MCP
+cd vendor/Adobe_Premiere_Pro_MCP && npm install && npm run build
+```
+
+Ajuste o caminho absoluto em `.mcp.json` para a sua máquina e siga o setup único
+dentro do Premiere (instalar a extensão CEP e iniciar o painel MCP Bridge):
+passo a passo em [`adapters/premiere_mcp/README.md`](adapters/premiere_mcp/README.md),
+que também documenta todas as fragilidades conhecidas do bridge.
+
+### Verificando que está tudo funcionando
+
+Os testes são scripts standalone (sem pytest) — cada arquivo roda direto:
+
+```bash
+# heurísticas de corte, com transcript sintético (não precisa de vídeo nem Premiere)
+.venv/bin/python tests/test_cutlist.py
+
+# testes que precisam de vídeo usam um fixture gerado por ffmpeg:
+tests/make_fixture.sh
+```
+
 ## Pipeline
 
 ```

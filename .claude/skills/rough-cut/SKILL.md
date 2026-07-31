@@ -25,6 +25,19 @@ O trim de borda é **adaptativo à duração do segmento E da palavra da borda**
 
 Dado um vídeo bruto `<video>`:
 
+0. **Acelerar 1.2x** (padrão do canal para Reel falado desde 2026-07-31 —
+   Instagram pede fala veloz; taxa vive na seção `speed` de `styles/seco.json`):
+   ```bash
+   .venv/bin/python src/speedup.py <video>
+   ```
+   Gera `<video>_12x.mp4` ao lado do fonte, pitch preservado, fps mantido.
+   **Daqui em diante TODO o fluxo usa o arquivo acelerado como `<video>`**
+   (transcrição, corte, compose) — a aceleração vem ANTES da transcrição
+   porque transcript, âncoras de motion e legendas referenciam timestamps do
+   fonte; acelerar depois quebraria todos os mapeamentos. Pular só se o vídeo
+   não for falado ou o usuário pedir ritmo natural. Motions do MotionSkills
+   nunca aceleram (são autorados no próprio ritmo).
+
 1. **Transcrever** — PULE este passo se já existir transcript do vídeo em `output/`
    (transcrição é a etapa cara; nunca re-transcrever sem necessidade):
    ```bash
@@ -78,8 +91,11 @@ Dado um vídeo bruto `<video>`:
    com `brief.md` e clips renderizados em `out/<nome>/clips/`), este é o
    FORMATO PADRÃO do Reel: motions em cima, câmera embaixo, legendas na divisa.
 
-   **Fluxo em DUAS ETAPAS com checkpoint manual (padrão desde 2026-07-30 —
-   o corte automático sempre precisa de ajustes finos do usuário):**
+   **Metodologia em ETAPAS com checkpoints do usuário (padrão desde
+   2026-07-31): CORTE → checkpoint → MOTIONS+MÚSICA → checkpoint + cor
+   manual → LEGENDAS por último.** O corte automático sempre precisa de
+   ajuste fino humano, e legenda por último absorve qualquer retoque das
+   etapas anteriores sem precisar de recaption:
 
    ```bash
    # 1. cola: manifest resolvido (âncoras textuais do brief) + SRT MAIÚSCULO
@@ -89,12 +105,17 @@ Dado um vídeo bruto `<video>`:
    # 3. ETAPA CORTE: timeline só com câmera + voz (V1 vazia -> Close Gap
    #    funciona; usuário faz os ajustes manuais de corte com liberdade)
    .venv/bin/python adapters/premiere_mcp/compose_premiere.py <video> output/cutlist_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --somente-corte
-   # 4. USUÁRIO edita o corte e avisa quando fechou
-   # 5. ETAPA FINALIZAR: lê o corte FINAL da timeline e sobe tudo já
-   #    sincronizado (motions fatiados nos cortes reais, música aparada ao
-   #    fim do conteúdo, legendas do áudio atual com texto corrigido)
-   .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --corrected-srt output/captions_<slug>.srt
+   # 4. CHECKPOINT: usuário edita o corte e avisa quando fechou
+   # 5. ETAPA MOTIONS: lê o corte FINAL da timeline e sobe motions fatiados
+   #    nos cortes reais + música aparada ao fim do conteúdo
+   .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa motions
+   # 6. CHECKPOINT: usuário revisa o dinamismo; COR entra aqui, manual:
+   #    Paste Attributes da referência em V2 (NUNCA marcar Motion/Crop)
+   # 7. ETAPA LEGENDAS (sempre a última — lê o áudio ATUAL da timeline):
+   .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa legendas --corrected-srt output/captions_<slug>.srt
    ```
+   `--etapa tudo` (default do finalize) sobe motions+música+legendas de uma
+   vez — usar só quando o usuário dispensar os checkpoints intermediários.
    Se o usuário editar DEPOIS do finalizar, refazer só a legenda com
    adapters/premiere_mcp/recaption_premiere.py (mesmos argumentos de
    transcript/--corrected-srt).
@@ -110,8 +131,9 @@ Dado um vídeo bruto `<video>`:
    `assets/music/*.m4a` (extrair de mp4: `ffmpeg -i in.mp4 -vn -c:a copy
    out.m4a`) — o ganho se autocalibra pela medição. No Premiere ela entra em
    A2 cortada no fim do vídeo com o ganho no clipe (fade out manual, se quiser).
-   Após o compose_premiere, aplicar a grade nos clipes de V2 (track_index=1)
-   com build_lumetri_jsx + noise_from_style. O enquadramento padrão da câmera
+   Na etapa de cor (passo 6), se o usuário não for usar a referência, a
+   grade escalar entra por script nos clipes de V2 (track_index=1) com
+   build_lumetri_jsx + noise_from_style. O enquadramento padrão da câmera
    (cabeça quase encostando na divisa: Scale 58, Position [0.58, 0.6825] +
    Crop Top 22.03% para fonte 4K 16:9) já sai do camera_transform do próprio
    compose_premiere — conferir por frame exportado (cabeça a ~20-35px da

@@ -1,4 +1,4 @@
-"""Etapa 2 do fluxo em duas etapas do canal (a FINALIZAÇÃO).
+"""Finalização do fluxo do canal — roda inteira ou por etapa.
 
 Fluxo padrão: compose_premiere --somente-corte monta a timeline só com
 câmera + voz (V1 vazia — Close Gap funciona nativamente); o usuário faz os
@@ -10,10 +10,20 @@ resto já sincronizado a ele:
   A*  música aparada ao fim real do conteúdo (track vazia, overwriteClip)
   C1  caption track do áudio atual (texto corrigido preservado do SRT)
 
+--etapa fatia a finalização na ordem da metodologia do canal
+(corte -> motions -> cor -> legendas), com checkpoint do usuário entre elas:
+
+  --etapa motions   sobe motions + música e PARA (usuário revisa dinamismo,
+                    aplica a cor manual por Paste Attributes da referência)
+  --etapa legendas  legendas do estado ATUAL da timeline — sempre por último,
+                    para absorver qualquer retoque feito nas etapas anteriores
+  --etapa tudo      comportamento clássico, tudo de uma vez (padrão)
+
 Uso (Premiere aberto, bridge ativa, timeline editada):
     python adapters/premiere_mcp/finalize_premiere.py \
         output/transcript_<slug>.json output/motion_manifest_<slug>.json \
-        --sequence-name reel_<slug> [--corrected-srt output/captions_<slug>.srt] \
+        --sequence-name reel_<slug> [--etapa motions|legendas|tudo] \
+        [--corrected-srt output/captions_<slug>.srt] \
         [--media-name dji_] [--camera-track 1] [--style seco]
 """
 
@@ -70,8 +80,12 @@ def main() -> None:
     parser.add_argument("--style", default="seco")
     parser.add_argument("--music", default=None)
     parser.add_argument("--no-music", action="store_true")
+    parser.add_argument("--etapa", choices=["tudo", "motions", "legendas"],
+                        default="tudo")
     parser.add_argument("--timeout", type=float, default=120.0)
     args = parser.parse_args()
+    do_motions = args.etapa in ("tudo", "motions")
+    do_captions = args.etapa in ("tudo", "legendas")
 
     for p in (args.transcript, args.manifest):
         if not p.exists():
@@ -80,9 +94,10 @@ def main() -> None:
     manifest = json.loads(args.manifest.read_text())
     layout = manifest.get("layout", {})
     scenes = manifest["scenes"]
-    for sc in scenes:
-        if not Path(sc["clip"]).exists():
-            sys.exit(f"clipe de motion não encontrado: {sc['clip']}")
+    if do_motions:
+        for sc in scenes:
+            if not Path(sc["clip"]).exists():
+                sys.exit(f"clipe de motion não encontrado: {sc['clip']}")
     style = load_style(args.style)
 
     words = [w for s in transcript["segments"] for w in s.get("words", [])
@@ -111,61 +126,74 @@ def main() -> None:
         out_words = remap_words_by_clips(words, clips)
         if not out_words:
             raise MCPError("nenhuma palavra caiu nos clipes — media-name certo?")
-        starts = find_scene_starts(scenes, out_words)
-        for sc, st in zip(scenes, starts):
-            sc["start"] = st
 
-        # V1 (abaixo da câmera) precisa estar vazia — é a etapa 1 que garante
-        mg_track = 0
-        st_struct = client.call_tool("get_sequence_structure",
-                                     {"sequenceId": str(seq_id)})
-        v1 = (find_key(st_struct, "videoTracks") or [{}])[mg_track]
-        if v1.get("clips"):
-            raise MCPError("V1 não está vazia — motions já subiram? "
-                           "(finalizar roda uma vez só)")
+        feito = []
+        if do_motions:
+            starts = find_scene_starts(scenes, out_words)
+            for sc, st in zip(scenes, starts):
+                sc["start"] = st
 
-        print("importando motions...")
-        mg_ids = [import_item(client, Path(sc["clip"])) for sc in scenes]
-        cam_starts = [c["start"] for c in clips[1:]]
-        motion_y = layout.get("motion_y_px")
-        mg_clips = build_mg_clips(scenes, mg_ids, cam_starts, total,
-                                  y_px=motion_y,
-                                  seq_h=layout.get("height", 1920))
-        print(f"V1: {len(mg_clips)} pedaços de motion nos cortes atuais...")
-        result = client.call_tool("add_to_timeline_batch",
-                                  {"sequenceId": str(seq_id),
-                                   "clips": mg_clips})
-        if find_key(result, "status") == "failure":
-            raise MCPError(f"batch de motions falhou: {result}")
-        if motion_y is not None:
-            client.call_tool("execute_extendscript",
-                             {"script": build_position_y_jsx(
-                                 mg_track, motion_y / layout.get("height", 1920))})
+            # V1 (abaixo da câmera) precisa estar vazia — é a etapa 1 que garante
+            mg_track = 0
+            st_struct = client.call_tool("get_sequence_structure",
+                                         {"sequenceId": str(seq_id)})
+            v1 = (find_key(st_struct, "videoTracks") or [{}])[mg_track]
+            if v1.get("clips"):
+                raise MCPError("V1 não está vazia — motions já subiram? "
+                               "(a etapa motions roda uma vez só)")
 
-        music_cfg = style.get("music")
-        if music_cfg and not args.no_music:
-            music_file = resolve_music_file(music_cfg, args.music)
-            add_music(client, str(seq_id), music_file, music_cfg, total)
+            print("importando motions...")
+            mg_ids = [import_item(client, Path(sc["clip"])) for sc in scenes]
+            cam_starts = [c["start"] for c in clips[1:]]
+            motion_y = layout.get("motion_y_px")
+            mg_clips = build_mg_clips(scenes, mg_ids, cam_starts, total,
+                                      y_px=motion_y,
+                                      seq_h=layout.get("height", 1920))
+            print(f"V1: {len(mg_clips)} pedaços de motion nos cortes atuais...")
+            result = client.call_tool("add_to_timeline_batch",
+                                      {"sequenceId": str(seq_id),
+                                       "clips": mg_clips})
+            if find_key(result, "status") == "failure":
+                raise MCPError(f"batch de motions falhou: {result}")
+            if motion_y is not None:
+                client.call_tool("execute_extendscript",
+                                 {"script": build_position_y_jsx(
+                                     mg_track,
+                                     motion_y / layout.get("height", 1920))})
+            feito.append(f"{len(mg_clips)} motions")
 
-        cap_cfg = style.get("captions", {})
-        chunks = group_captions(out_words,
-                                max_words=cap_cfg.get("max_words", 3),
-                                max_gap=cap_cfg.get("max_gap", 0.6))
-        if cap_cfg.get("uppercase", True):
-            for c in chunks:
-                c["text"] = c["text"].upper()
-        out_srt = Path(f"output/captions_{args.sequence_name}_final.srt")
-        out_srt.write_text(format_srt(chunks))
-        srt_id = import_item(client, out_srt)
-        client.call_tool("create_caption_track",
-                         {"sequenceId": str(seq_id), "projectItemId": srt_id})
-        print(f"caption track criada ({len(chunks)} legendas, SRT: {out_srt})")
+            music_cfg = style.get("music")
+            if music_cfg and not args.no_music:
+                music_file = resolve_music_file(music_cfg, args.music)
+                add_music(client, str(seq_id), music_file, music_cfg, total)
+                feito.append("música")
+
+        if do_captions:
+            cap_cfg = style.get("captions", {})
+            chunks = group_captions(out_words,
+                                    max_words=cap_cfg.get("max_words", 3),
+                                    max_gap=cap_cfg.get("max_gap", 0.6))
+            if cap_cfg.get("uppercase", True):
+                for c in chunks:
+                    c["text"] = c["text"].upper()
+            out_srt = Path(f"output/captions_{args.sequence_name}_final.srt")
+            out_srt.write_text(format_srt(chunks))
+            srt_id = import_item(client, out_srt)
+            client.call_tool("create_caption_track",
+                             {"sequenceId": str(seq_id), "projectItemId": srt_id})
+            print(f"caption track criada ({len(chunks)} legendas, SRT: {out_srt})")
+            feito.append(f"{len(chunks)} legendas")
 
         client.call_tool("save_project", {})
-        print(f"FINALIZADO: {len(mg_clips)} motions + música + legendas sobre "
-              f"o corte de {len(clips)} clipes. Projeto salvo.")
-        print("MANUAL: aplicar Track Style 'canal' na caption track; travar a "
-              "track da música; cor fina = Paste Attributes da referência.")
+        print(f"ETAPA {args.etapa.upper()}: {' + '.join(feito)} sobre o corte "
+              f"de {len(clips)} clipes. Projeto salvo.")
+        if do_motions and not do_captions:
+            print("PRÓXIMO: revisar o dinamismo dos motions; cor = Paste "
+                  "Attributes da referência em V2 (NUNCA Motion/Crop); depois "
+                  "rodar de novo com --etapa legendas.")
+        if do_captions:
+            print("MANUAL: aplicar Track Style 'canal' na caption track; travar "
+                  "a track da música; cor fina = Paste Attributes da referência.")
     finally:
         client.close()
 

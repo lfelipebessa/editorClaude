@@ -123,10 +123,16 @@ Dado um vídeo bruto `<video>`:
    reel_<slug>.mp4`) NÃO roda por padrão — só quando o usuário pedir preview
    rápido ou publicação direta sem ajustes.
 
+   **Motion entra exatamente como autorado (padrão global desde 2026-07-31):**
+   nunca ajustar posição, altura, X/Y ou zoom dos clipes de motion — eles já
+   vêm no formato correto do MotionSkills. Não passar `--motion-y-px` no
+   prepare_compose (flag é legado para reprocessar sets antigos).
+
    **Música de fundo é padrão** (seção `music` do style): entra automática nos
    dois composers — `musicafundo3` da biblioteca `assets/music/`, ganho
-   calculado por medição para o bed cair em `bed_lufs` (-36 LUFS ≈ 22 dB
-   abaixo da voz). Trocar: `--music <nome>` (meAndTheD, musicafundo,
+   calculado por medição para o bed cair em `bed_lufs` (-25 LUFS ≈ 11 dB
+   abaixo da voz; ajustado de -30 em 2026-07-31 a pedido do usuário — estava
+   baixo demais). Trocar: `--music <nome>` (meAndTheD, musicafundo,
    musicafundo2); desligar: `--no-music`. Música nova = jogar o arquivo em
    `assets/music/*.m4a` (extrair de mp4: `ffmpeg -i in.mp4 -vn -c:a copy
    out.m4a`) — o ganho se autocalibra pela medição. No Premiere ela entra em

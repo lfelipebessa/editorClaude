@@ -36,7 +36,9 @@ def main() -> None:
     parser.add_argument("--out-srt", type=Path, default=None)
     parser.add_argument("--style", default="seco")
     parser.add_argument("--motion-y-px", type=int, default=None,
-                        help="compensa set de motion autorado fora do split-safe (ex.: 1049 no plugin-administrativo)")
+                        help="LEGADO — não usar. Padrão do canal (2026-07-31): motion entra "
+                             "exatamente como autorado, sem ajuste de posição/altura/zoom. "
+                             "A flag só existe para reprocessar sets antigos.")
     args = parser.parse_args()
 
     brief = args.motions_dir / "brief.md"

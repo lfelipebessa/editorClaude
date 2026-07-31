@@ -2,6 +2,11 @@
   "name": "seco",
   "description": "Jump cut agressivo estilo rede social — padrão do canal. Ajustes de gosto editam ESTE arquivo, nunca o código.",
   "language": "pt",
+  "speed": {
+    "rate": 1.2,
+    "scope": "camera",
+    "note": "Padrão do canal para Reel falado (desde 2026-07-31): bruto acelerado 1.2x com pitch preservado ANTES da transcrição (src/speedup.py) — Instagram pede fala veloz. Motions do MotionSkills NÃO aceleram (autorados no próprio ritmo). Vídeo não-falado ou pedido explícito de ritmo natural: pular o passo."
+  },
   "cut": {
     "trim_start": 0.07,
     "trim_end": 0.12,

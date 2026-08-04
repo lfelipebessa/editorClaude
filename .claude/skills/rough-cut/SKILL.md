@@ -19,7 +19,12 @@ O trim de borda é **adaptativo à duração do segmento E da palavra da borda**
 - palavra final curta/sigla (ex.: "CRM"): o aligner costuma fechá-la antes da fala
   acabar — o fim estende até o silêncio real detectado, com teto
   `short_word_end_margin`, sem nunca invadir o segmento seguinte;
-- segmento longo com palavras longas nas bordas → `trim_start`/`trim_end` na íntegra.
+- segmento longo com palavras longas nas bordas → `trim_start`/`trim_end` na íntegra;
+- **borda de saída respira**: todo fim de segmento leva `pad_after` (0.15s desde
+  2026-08-04) depois do onset do silêncio detectado — sem isso o corte fechava no
+  disparo do silencedetect e comia o decay da última sílaba em parte dos clipes.
+  Regra de calibragem: sobra de fim é recuperável na timeline, falta não é —
+  na dúvida, errar sempre para o lado da sobra.
 
 ## Fluxo (executar do diretório do projeto, com `.venv` ativo)
 

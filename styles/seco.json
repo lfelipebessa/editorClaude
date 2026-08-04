@@ -17,8 +17,9 @@
     "short_word_end_margin": 0.5,
     "max_word_gap": 0.25,
     "pad_before": 0.0,
-    "pad_after": 0.0,
-    "min_segment": 0.2
+    "pad_after": 0.15,
+    "min_segment": 0.2,
+    "note": "pad_after 0.15 (2026-08-04): borda de saída fechava exatamente no onset do silencedetect e comia o decay da última sílaba em parte dos clipes. Sobra de fim é recuperável na timeline; falta não é — errar sempre para o lado da sobra."
   },
   "color": {
     "scope": "camera",

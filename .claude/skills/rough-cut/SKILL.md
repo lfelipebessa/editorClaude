@@ -113,8 +113,9 @@ Dado um vídeo bruto `<video>`:
    # 4. CHECKPOINT: usuário edita o corte e avisa quando fechou
    # 5. ETAPA MOTIONS: lê o corte FINAL da timeline e sobe motions fatiados
    #    nos cortes reais + música aparada ao fim do conteúdo + punch-in de
-   #    abertura automático (1º clipe da câmera E do motion: zoom 120%
-   #    assentando em 0.4s, blur só na câmera — seção punch_in do style)
+   #    abertura automático (1º clipe da câmera E do motion abrem em Scale
+   #    120 ABSOLUTO assentando na base de cada um em 0.4s, blur só na
+   #    câmera — seção punch_in do style)
    .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa motions
    # 6. CHECKPOINT: usuário revisa o dinamismo; COR entra aqui, manual:
    #    Paste Attributes da referência em V2 (NUNCA marcar Motion/Crop)

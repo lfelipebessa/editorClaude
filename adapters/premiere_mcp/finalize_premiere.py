@@ -77,6 +77,7 @@ def apply_punch_in(client: MCPStdioClient, seq_id: str, punch_cfg: dict,
     Keyframes ancoram no tempo da MÍDIA (inPoint + offset) — keyframe antes
     do inPoint cai na parte aparada do clipe e não renderiza nada."""
     zoom = punch_cfg.get("zoom", 1.2)
+    scale_abs = punch_cfg.get("scale_abs")
     dur = punch_cfg.get("duration", 0.4)
     blur = punch_cfg.get("blur_amount", 8)
     blur_dur = punch_cfg.get("blur_duration", 0.25)
@@ -98,7 +99,12 @@ def apply_punch_in(client: MCPStdioClient, seq_id: str, punch_cfg: dict,
         props = client.call_tool("get_clip_properties", {"clipId": node_id})
         base = find_key(props, "scale") or 100
         in_pt = clip.get("inPoint", 0)
-        delta = base * (zoom - 1)
+        # pico absoluto (scale_abs) vale para qualquer base — câmera 58 e
+        # motion 100 abrem no MESMO Scale; sem scale_abs, multiplicador zoom
+        pico = scale_abs if scale_abs else base * zoom
+        delta = pico - base
+        if delta <= 0:
+            continue
         # assentamento rápido: pico -> 14.5% do delta aos 62.5% do tempo -> base
         for off, val in ((0.0, base + delta),
                          (dur * 0.625, base + delta * 0.145),

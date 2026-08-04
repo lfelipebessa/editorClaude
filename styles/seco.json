@@ -72,11 +72,11 @@
     }
   },
   "punch_in": {
-    "zoom": 1.2,
+    "scale_abs": 120,
     "duration": 0.4,
     "blur_amount": 8,
     "blur_duration": 0.25,
-    "note": "Punch-in de abertura (padrão desde 2026-08-04): 1º clipe da câmera E do motion abrem com zoom 120% assentando em 0.4s; Gaussian Blur (Amount 8->0 em 0.25s) só na câmera. Única exceção autorizada à regra 'motion entra como autorado'. Keyframe MCP ancora no tempo da mídia: somar o inPoint do clipe."
+    "note": "Punch-in de abertura (padrão desde 2026-08-04): 1º clipe da câmera E do motion abrem em Scale 120 ABSOLUTO (câmera sai de close ~2x; motion 1.2x) assentando na base de cada um em 0.4s; Gaussian Blur (Amount 8->0 em 0.25s) só na câmera. Única exceção autorizada à regra 'motion entra como autorado'. Keyframe MCP ancora no tempo da mídia: somar o inPoint do clipe. Alternativa relativa: trocar scale_abs por zoom (multiplicador)."
   },
   "captions": {
     "font_file": "/System/Library/Fonts/Supplemental/Arial Black.ttf",

@@ -43,12 +43,12 @@ def remap_words(words: list[dict], cut_segments: list[dict]) -> list[dict]:
     em região removida são descartadas (não existem no vídeo final).
     """
     out, offset = [], 0.0
-    for seg in cut_segments:
+    for i, seg in enumerate(cut_segments):
         for w in words:
             if _word_in_range(w, seg["start"], seg["end"]):
                 start = offset + max(w["start"], seg["start"]) - seg["start"]
                 end = offset + min(w["end"], seg["end"]) - seg["start"]
-                out.append({"word": w["word"],
+                out.append({"word": w["word"], "clip": i,
                             "start": round(start, 3), "end": round(end, 3)})
         offset += seg["end"] - seg["start"]
     return out
@@ -63,12 +63,12 @@ def remap_words_by_clips(words: list[dict], clips: list[dict]) -> list[dict]:
     Palavra pertence ao clipe em que COMEÇA (ver _word_in_range).
     """
     out = []
-    for clip in sorted(clips, key=lambda c: c["start"]):
+    for i, clip in enumerate(sorted(clips, key=lambda c: c["start"])):
         for w in words:
             if _word_in_range(w, clip["inPoint"], clip["outPoint"]):
                 start = clip["start"] + max(w["start"], clip["inPoint"]) - clip["inPoint"]
                 end = clip["start"] + min(w["end"], clip["outPoint"]) - clip["inPoint"]
-                out.append({"word": w["word"],
+                out.append({"word": w["word"], "clip": i,
                             "start": round(start, 3), "end": round(end, 3)})
     return out
 
@@ -108,12 +108,17 @@ def merge_corrected_text(words: list[dict],
 
 def group_captions(words: list[dict], max_words: int = 3,
                    max_gap: float = 0.6, max_dur: float = 2.5) -> list[dict]:
-    """Agrupa palavras em legendas curtas estilo social."""
+    """Agrupa palavras em legendas curtas estilo social.
+
+    Legenda nunca atravessa corte: mudança de `clip` (marcado pelos remaps)
+    fecha o grupo — sem isso o fim de uma frase colava com o começo da
+    seguinte ("SEM ISSO TERMINEI") por cima do corte."""
     groups, cur = [], []
     for w in words:
         if cur and (len(cur) >= max_words
                     or w["start"] - cur[-1]["end"] > max_gap
-                    or w["end"] - cur[0]["start"] > max_dur):
+                    or w["end"] - cur[0]["start"] > max_dur
+                    or w.get("clip") != cur[-1].get("clip")):
             groups.append(cur)
             cur = []
         cur.append(w)

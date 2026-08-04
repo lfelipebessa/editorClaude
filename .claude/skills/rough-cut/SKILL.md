@@ -118,6 +118,15 @@ Dado um vídeo bruto `<video>`:
    #    Paste Attributes da referência em V2 (NUNCA marcar Motion/Crop)
    # 7. ETAPA LEGENDAS (sempre a última — lê o áudio ATUAL da timeline):
    .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa legendas --corrected-srt output/captions_<slug>.srt
+   # 8. QA DA LEGENDA (sempre rodar após a etapa legendas): re-transcreve o
+   #    áudio do corte final e diffa com a legenda — pega frase que o ASR
+   #    ENGOLIU no bruto (ex.: "Terminei a call" virou a palavra falsa "Eu";
+   #    palavra que não existe no transcript nunca vira legenda). Diff tem
+   #    ruído em borda de corte; sinal forte = os dois ASRs discordando da
+   #    MESMA região. Frase engolida: inserir palavras no transcript (com os
+   #    timestamps de fonte que o QA imprime), tokens no SRT corrigido, e
+   #    refazer com recaption.
+   .venv/bin/python adapters/premiere_mcp/qa_captions_premiere.py <video> output/captions_reel_<slug>_final.srt --sequence-name reel_<slug>
    ```
    `--etapa tudo` (default do finalize) sobe motions+música+legendas de uma
    vez — usar só quando o usuário dispensar os checkpoints intermediários.

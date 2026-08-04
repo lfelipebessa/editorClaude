@@ -112,7 +112,9 @@ Dado um vídeo bruto `<video>`:
    .venv/bin/python adapters/premiere_mcp/compose_premiere.py <video> output/cutlist_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --somente-corte
    # 4. CHECKPOINT: usuário edita o corte e avisa quando fechou
    # 5. ETAPA MOTIONS: lê o corte FINAL da timeline e sobe motions fatiados
-   #    nos cortes reais + música aparada ao fim do conteúdo
+   #    nos cortes reais + música aparada ao fim do conteúdo + punch-in de
+   #    abertura automático (1º clipe da câmera E do motion: zoom 120%
+   #    assentando em 0.4s, blur só na câmera — seção punch_in do style)
    .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa motions
    # 6. CHECKPOINT: usuário revisa o dinamismo; COR entra aqui, manual:
    #    Paste Attributes da referência em V2 (NUNCA marcar Motion/Crop)
@@ -140,7 +142,11 @@ Dado um vídeo bruto `<video>`:
    **Motion entra exatamente como autorado (padrão global desde 2026-07-31):**
    nunca ajustar posição, altura, X/Y ou zoom dos clipes de motion — eles já
    vêm no formato correto do MotionSkills. Não passar `--motion-y-px` no
-   prepare_compose (flag é legado para reprocessar sets antigos).
+   prepare_compose (flag é legado para reprocessar sets antigos). **Única
+   exceção (2026-08-04): o punch-in de abertura** — keyframes de Scale por
+   cima do transform autorado, só no 1º clipe, aplicados pelo finalize.
+   ATENÇÃO ao aplicar keyframe via MCP na mão: o tempo ancora na MÍDIA
+   (somar o inPoint do clipe); keyframe antes do inPoint não renderiza.
 
    **Música de fundo é padrão** (seção `music` do style): entra automática nos
    dois composers — `musicafundo3` da biblioteca `assets/music/`, ganho

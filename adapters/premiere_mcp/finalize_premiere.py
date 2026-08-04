@@ -69,6 +69,54 @@ def read_camera_clips(client: MCPStdioClient, track_index: int,
     return sorted(clips, key=lambda c: c["start"])
 
 
+def apply_punch_in(client: MCPStdioClient, seq_id: str, punch_cfg: dict,
+                   camera_track: int) -> None:
+    """Punch-in de abertura (padrão do canal desde 2026-08-04): 1º clipe da
+    câmera E do motion abrem com zoom extra assentando rápido; blur só na
+    câmera. Única exceção autorizada à regra 'motion entra como autorado'.
+    Keyframes ancoram no tempo da MÍDIA (inPoint + offset) — keyframe antes
+    do inPoint cai na parte aparada do clipe e não renderiza nada."""
+    zoom = punch_cfg.get("zoom", 1.2)
+    dur = punch_cfg.get("duration", 0.4)
+    blur = punch_cfg.get("blur_amount", 8)
+    blur_dur = punch_cfg.get("blur_duration", 0.25)
+
+    st = client.call_tool("get_sequence_structure", {"sequenceId": str(seq_id)})
+    tracks = find_key(st, "videoTracks") or []
+
+    def primeiro(track_index: int) -> dict | None:
+        if track_index >= len(tracks):
+            return None
+        clips = tracks[track_index].get("clips") or []
+        return clips[0] if clips else None
+
+    alvos = [(primeiro(camera_track), True), (primeiro(0), False)]
+    for clip, com_blur in alvos:
+        if not clip:
+            continue
+        node_id = clip["nodeId"]
+        props = client.call_tool("get_clip_properties", {"clipId": node_id})
+        base = find_key(props, "scale") or 100
+        in_pt = clip.get("inPoint", 0)
+        delta = base * (zoom - 1)
+        # assentamento rápido: pico -> 14.5% do delta aos 62.5% do tempo -> base
+        for off, val in ((0.0, base + delta),
+                         (dur * 0.625, base + delta * 0.145),
+                         (dur, base)):
+            client.call_tool("add_keyframe", {
+                "clipId": node_id, "componentName": "Motion",
+                "paramName": "Scale", "time": round(in_pt + off, 4),
+                "value": round(val, 2)})
+        if com_blur and blur > 0:
+            client.call_tool("apply_effect", {"clipId": node_id,
+                                              "effectName": "Gaussian Blur"})
+            for off, val in ((0.0, blur), (blur_dur, 0)):
+                client.call_tool("add_keyframe", {
+                    "clipId": node_id, "componentName": "Gaussian Blur",
+                    "paramName": "Amount", "time": round(in_pt + off, 4),
+                    "value": val})
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transcript", type=Path)
@@ -161,6 +209,13 @@ def main() -> None:
                                      mg_track,
                                      motion_y / layout.get("height", 1920))})
             feito.append(f"{len(mg_clips)} motions")
+
+            punch_cfg = style.get("punch_in")
+            if punch_cfg:
+                print("punch-in de abertura (câmera + motion)...")
+                apply_punch_in(client, str(seq_id), punch_cfg,
+                               args.camera_track)
+                feito.append("punch-in")
 
             music_cfg = style.get("music")
             if music_cfg and not args.no_music:

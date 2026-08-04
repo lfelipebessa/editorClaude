@@ -150,10 +150,11 @@ Dado um vídeo bruto `<video>`:
    compose_premiere — conferir por frame exportado (cabeça a ~20-35px da
    divisa). Avisar o usuário dos toques manuais: (1) na caption track nova,
    aplicar o **Track Style `canal`** (dropdown Track Style no Essential
-   Graphics — estilo salvo pelo usuário: maiúsculas, **tamanho 62, negrito**,
-   branco com contorno preto, apoiada na divisa; padrão de fonte desde
-   2026-07-31) — 2 cliques. No burn ffmpeg o mesmo padrão sai da seção
-   `captions` do style (size 62; negrito vem da própria Arial Black); (2) se quiser as
+   Graphics — estilo salvo pelo usuário: maiúsculas, **tamanho 70, negrito**,
+   branco com contorno preto, **centralizada no Align & Transform**; padrão
+   de fonte desde 2026-08-04, antes era 62 apoiada na divisa) — 2 cliques.
+   No burn ffmpeg o mesmo padrão sai da seção
+   `captions` do style (size 70; negrito vem da própria Arial Black); (2) se quiser as
    curvas finas, Remove Attributes + Paste Attributes da referência em V2
    (NUNCA marcar Motion nem Crop); (3) travar a track da música antes de
    editar (ripple não deve encolher o bed).

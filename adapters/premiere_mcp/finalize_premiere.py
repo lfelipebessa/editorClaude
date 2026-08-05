@@ -29,6 +29,7 @@ Uso (Premiere aberto, bridge ativa, timeline editada):
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -43,6 +44,8 @@ from render_ffmpeg import resolve_music_file  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
 from compose import (find_scene_starts, format_srt, group_captions,
                      merge_corrected_text, parse_srt, remap_words_by_clips)
+from cut_artifacts import (infer_speed_rate, segments_from_clips,
+                           write_cut_artifacts)
 
 
 def read_camera_clips(client: MCPStdioClient, track_index: int,
@@ -151,6 +154,13 @@ def apply_punch_in(client: MCPStdioClient, seq_id: str, punch_cfg: dict,
                     "value": val})
 
 
+def media_duration(path: Path) -> float:
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
+                          "format=duration", "-of", "csv=p=0", str(path)],
+                         capture_output=True, text=True, check=True)
+    return float(out.stdout.strip())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transcript", type=Path)
@@ -209,11 +219,31 @@ def main() -> None:
         if not out_words:
             raise MCPError("nenhuma palavra caiu nos clipes — media-name certo?")
 
+        # o corte ATUAL da timeline vira artefato — mantém transcript_cut fresco
+        # a cada etapa (o usuário pode ter retocado o corte entre etapas)
+        slug = args.sequence_name.removeprefix("reel_")
+        rate = infer_speed_rate(
+            transcript, style.get("speed", {}).get("rate", 1.2))
+        p_cut, p_tr = write_cut_artifacts(
+            transcript, segments_from_clips(clips), "timeline", slug, rate)
+        print(f"artefatos do corte atualizados: {p_cut.name}, {p_tr.name}")
+
         feito = []
         if do_motions:
             starts = find_scene_starts(scenes, out_words)
             for sc, st in zip(scenes, starts):
                 sc["start"] = st
+
+            for i, sc in enumerate(scenes):
+                span = ((scenes[i + 1]["start"] if i + 1 < len(scenes)
+                         else total) - sc["start"])
+                dur = media_duration(Path(sc["clip"]))
+                if span > dur + 0.05:
+                    modo = ("marcado como loop, mas o caminho Premiere NÃO "
+                            "faz loop — repetir o clipe à mão"
+                            if sc.get("loop") else "sem loop")
+                    print(f"    AVISO: seção de {span:.2f}s > motion de "
+                          f"{dur:.2f}s ({Path(sc['clip']).name}, {modo})")
 
             # V1 (abaixo da câmera) precisa estar vazia — é a etapa 1 que garante
             mg_track = 0

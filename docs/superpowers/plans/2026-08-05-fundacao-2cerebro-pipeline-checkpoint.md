@@ -4,7 +4,7 @@
 
 **Goal:** Plugar todos os projetos de `~/development` no vault 2Cerebro por um CLAUDE.md guarda-chuva, e fazer o pipeline de vídeo gerar motion graphics da fala REAL do corte aprovado (persistida em artefatos no checkpoint 1), com diff copy×fala como trava pré-publicação.
 
-**Architecture:** Abordagem "córtex e membros" — vault só conhecimento, repos intocados (contrato via CLAUDE.md de diretório pai). No EditorClaude, o checkpoint 1 (que já existe) passa a persistir `cutlist_final_<slug>.json` + `transcript_cut_<slug>.json` + `transcript_cut_<slug>.md`; o MotionSkills autora o brief sobre esse `.md` (modo real: durações exatas, sem +20%); o diff copy×fala roda no checkpoint 2 antes de publicar. Spec completa: vault `03 Recursos/Técnico/Design — Fundação do 2Cerebro e pipeline de vídeo com checkpoint.md`.
+**Architecture:** Abordagem "córtex e membros" — vault só conhecimento, repos intocados (contrato via CLAUDE.md de diretório pai). No EditorClaude, o checkpoint 1 (que já existe) passa a persistir `cutlist_final_<slug>.json` + `transcript_cut_<slug>.json` (fonte de verdade re-renderizável); o contrato pro MotionSkills é o `handoff_<slug>.md` do plano irmão (`2026-08-05-motion-checkpoint.md` — ver seção COORDENAÇÃO); o diff copy×fala roda no checkpoint 2 como trava pré-publicação. Spec completa: vault `03 Recursos/Técnico/Design — Fundação do 2Cerebro e pipeline de vídeo com checkpoint.md`.
 
 **Tech Stack:** Python 3.11 (stdlib only nas peças novas), testes standalone (padrão do repo, sem pytest), Premiere via MCP bridge existente, Remotion/skill no MotionSkills (só markdown), ffmpeg.
 
@@ -18,6 +18,32 @@
 - EditorClaude: `~/development/EditorClaude`
 - MotionSkills: `~/development/MotionSkills/motion-graphics`
 - Vault: `~/development/2Cerebro` (symlink; caminhos têm espaço — sempre entre aspas)
+
+---
+
+## ⚠️ COORDENAÇÃO OBRIGATÓRIA — plano irmão em execução
+
+Existe um plano paralelo NESTE repo, **já em execução por outra sessão**:
+`docs/superpowers/plans/2026-08-05-motion-checkpoint.md` (spec:
+`docs/superpowers/specs/2026-08-04-motion-checkpoint-design.md`). Ele cobre:
+`src/motion_handoff.py` + `src/prepare_motion_handoff.py` (handoff corte→motions
+com merge da copy e marcadores TELA), molde de sequência sem manifest no
+`compose_premiere.py`, modo `Fonte: corte aprovado` na skill transcript-to-motion,
+e orquestração Maestri (Produtor de Vídeo).
+
+**Regras para o executor DESTE plano:**
+1. NÃO tocar em `src/motion_handoff.py`, `src/prepare_motion_handoff.py` nem
+   `adapters/premiere_mcp/compose_premiere.py` — pertencem ao plano irmão
+   (sessão ativa, com edits não commitados).
+2. As Tasks 2, 4 e o modo transcript_cut do prepare_compose foram REMOVIDOS
+   deste plano — o plano irmão os cobre (ver stubs nas seções).
+3. Tasks 10.1 (SKILL.md) e 9 só rodam DEPOIS do plano irmão mergear — são
+   aditivas sobre o fluxo dele.
+4. Este plano contribui o que o irmão NÃO tem: guarda-chuva (Task 1),
+   persistência JSON do corte (Tasks 3, 5, 7 — o handoff.md do irmão é o
+   contrato pro MotionSkills; os JSONs daqui são a fonte de verdade
+   re-renderizável e o insumo do diff), diff copy×fala como TRAVA do
+   checkpoint 2 (Task 8), higiene de README/Dur. e registro no vault.
 
 ---
 
@@ -94,13 +120,14 @@ Expected: resposta mencionando `03 Recursos/Técnico` e `rascunho: true` (prova 
 
 ---
 
-### Task 2: Molde de formato + manifest opcional no `--somente-corte`
+### Task 2: ~~Molde de formato + manifest opcional~~ — REMOVIDA (coberta pelo plano irmão)
 
-**Files:**
-- Create: `~/development/EditorClaude/assets/molde_1080x1920.mp4` (gerado por ffmpeg, ~5KB)
-- Modify: `~/development/EditorClaude/adapters/premiere_mcp/compose_premiere.py` (função `compose` ~linhas 279-306 e `main` ~linhas 418-454)
+O plano `2026-08-05-motion-checkpoint.md` implementa exatamente isto
+(molde preto via ffmpeg lavfi gerado em runtime, manifest opcional no
+`--somente-corte`). Verificar que a task correspondente do plano irmão está
+concluída antes de rodar o fluxo v2. **Não implementar nada aqui.**
 
-No fluxo novo, na etapa CORTE ainda **não existe** brief/motion (o brief nasce depois, do transcript do corte). Mas `compose_premiere --somente-corte` usa `scenes[0]["clip"]` como molde 1080×1920 para criar a sequência (contorno do `create_sequence` bloqueado). Solução: molde estático + manifest opcional.
+<details><summary>Conteúdo original (referência, NÃO executar)</summary>
 
 - [ ] **Step 2.1: Gerar o molde** (vídeo preto 2s, 1080×1920 @30fps — só formato importa):
 
@@ -190,6 +217,8 @@ Expected: os dois imprimem OK (mesmo comportamento de antes da mudança).
 git add assets/molde_1080x1920.mp4 adapters/premiere_mcp/compose_premiere.py
 git commit -m "Etapa corte sem manifest: molde estático 1080x1920 (fluxo brief-depois-do-corte)"
 ```
+
+</details>
 
 ---
 
@@ -419,7 +448,14 @@ git commit -m "cut_artifacts: persiste o corte do checkpoint 1 (cutlist_final + 
 
 ---
 
-### Task 4: `src/format_transcript_md.py` — transcript_cut → prosa MM:SS (TDD)
+### Task 4: ~~Formatador transcript_cut → prosa MM:SS~~ — REMOVIDA (superada pelo handoff)
+
+O `handoff_<slug>.md` do plano irmão é o contrato EditorClaude→MotionSkills —
+mais rico que este formatador (grafia corrigida pela copy + marcadores TELA
+reancorados). **Não implementar nada aqui.** Os artefatos JSON da Task 3
+continuam necessários (fonte de verdade + insumo do diff da Task 8).
+
+<details><summary>Conteúdo original (referência, NÃO executar)</summary>
 
 **Files:**
 - Create: `~/development/EditorClaude/src/format_transcript_md.py`
@@ -542,6 +578,8 @@ git add src/format_transcript_md.py tests/test_format_transcript.py
 git commit -m "format_transcript_md: transcript_cut -> prosa MM:SS pro MotionSkills"
 ```
 
+</details>
+
 ---
 
 ### Task 5: `adapters/premiere_mcp/export_cut.py` — comando que fecha o checkpoint 1
@@ -549,7 +587,7 @@ git commit -m "format_transcript_md: transcript_cut -> prosa MM:SS pro MotionSki
 **Files:**
 - Create: `~/development/EditorClaude/adapters/premiere_mcp/export_cut.py`
 
-Roda quando o usuário terminar a edição manual (Premiere aberto, bridge viva). Lê o corte da timeline e persiste os 3 artefatos. É a ÚNICA parte nova que exige Premiere — tudo a jusante passa a funcionar sem ele.
+Roda quando o usuário terminar a edição manual (Premiere aberto, bridge viva). Lê o corte da timeline e persiste os 2 artefatos JSON. É a ÚNICA parte nova que exige Premiere — tudo a jusante passa a funcionar sem ele. (O handoff.md pro MotionSkills é gerado pelo `prepare_motion_handoff.py` do plano irmão; este comando persiste a FONTE DE VERDADE — inclusive pro fallback "Premiere fechado" do próprio handoff, que hoje cai na cutlist automática e perde a edição manual.)
 
 - [ ] **Step 5.1: Implementar:**
 
@@ -558,8 +596,8 @@ Roda quando o usuário terminar a edição manual (Premiere aberto, bridge viva)
 
 Rodar quando o usuário fechar a edição manual do corte (Premiere aberto, painel
 MCP Bridge ativo). Grava cutlist_final_<slug>.json + transcript_cut_<slug>.json
-+ transcript_cut_<slug>.md em output/. Depois disso o brief do MotionSkills, o
-diff de copy e o re-render ffmpeg funcionam SEM Premiere.
+em output/. Depois disso o diff de copy, o re-render ffmpeg e o fallback do
+handoff (prepare_motion_handoff) funcionam SEM Premiere.
 
 Uso:
     python adapters/premiere_mcp/export_cut.py output/transcript_<slug>.json \
@@ -580,7 +618,6 @@ from finalize_premiere import read_camera_clips
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
 from cut_artifacts import (infer_speed_rate, segments_from_clips,
                            write_cut_artifacts)
-from format_transcript_md import write_transcript_md
 
 
 def main() -> None:
@@ -619,12 +656,11 @@ def main() -> None:
     p_cut, p_tr = write_cut_artifacts(transcript, segments_from_clips(clips),
                                       "timeline", slug, rate)
     tcut = json.loads(p_tr.read_text())
-    p_md = write_transcript_md(tcut, slug)
     print(f"CHECKPOINT 1 persistido: {len(clips)} clipes, "
           f"corte de {tcut['cut_duration']}s (origem: timeline)")
-    print(f"  {p_cut}\n  {p_tr}\n  {p_md}")
-    print(f"PRÓXIMO: autorar o brief no MotionSkills a partir de {p_md.name} "
-          f"(fala REAL do corte — modo real, sem margem de +20%).")
+    print(f"  {p_cut}\n  {p_tr}")
+    print("PRÓXIMO: gerar o handoff pro MotionSkills "
+          "(src/prepare_motion_handoff.py — plano motion-checkpoint).")
 
 
 if __name__ == "__main__":
@@ -648,11 +684,17 @@ git commit -m "export_cut: fecha o checkpoint 1 persistindo o corte da timeline"
 
 ---
 
-### Task 6: `prepare_compose` consome transcript_cut + avisa divergência de Dur.
+### Task 6: Aviso de Dur. divergente no brief (higiene)
+
+> **Escopo reduzido na reconciliação:** o modo "prepare_compose consome
+> transcript_cut" foi REMOVIDO — a spec irmã decidiu explicitamente
+> `prepare_compose sem mudança` de fluxo (fuzzy matching é a robustez a
+> re-corte). Fica só a higiene da coluna Dur. (hoje calculada e ignorada):
+> parser passa a lê-la e o prepare_compose avisa quando a seção real diverge.
 
 **Files:**
 - Modify: `~/development/EditorClaude/src/compose.py` (função `parse_brief_scenes`, ~linha 154)
-- Modify: `~/development/EditorClaude/src/prepare_compose.py` (bloco de remap ~linhas 54-64 e loop de print ~linhas 105-108)
+- Modify: `~/development/EditorClaude/src/prepare_compose.py` (só o loop de print ~linhas 105-108)
 - Test: `~/development/EditorClaude/tests/test_compose.py` (adicionar casos no fim, antes do print final — abrir o arquivo e seguir o padrão existente)
 
 - [ ] **Step 6.1: Teste que falha — adicionar ao FIM de `tests/test_compose.py`** (antes da última linha de print, se houver; senão ao final):
@@ -699,32 +741,7 @@ Expected: `KeyError: 'dur'` (os asserts antigos continuam passando).
 
 Expected: termina com `parse_brief_scenes lê Dur.: OK` e todos os OKs anteriores.
 
-- [ ] **Step 6.5: `prepare_compose.py` — aceitar transcript_cut** — trocar o bloco atual (`slug = args.cutlist.stem...` até o `sys.exit` do remap vazio) por:
-
-```python
-    transcript = json.loads(args.transcript.read_text())
-    cutlist = json.loads(args.cutlist.read_text())
-    if "offsets" in transcript:
-        # transcript_cut_<slug>.json: palavras JÁ em tempo de corte (fluxo do
-        # checkpoint — chamar com output/cutlist_final_<slug>.json como cutlist)
-        out_words = transcript["words"]
-        slug = args.transcript.stem.replace("transcript_cut_", "")
-        print(f"modo corte-aprovado: {len(out_words)} palavras do "
-              f"transcript_cut (origem: {transcript.get('origem')})")
-    else:
-        words = [w for s in transcript["segments"] for w in s.get("words", [])
-                 if "start" in w]
-        out_words = remap_words(words, cutlist["segments"])
-        slug = args.cutlist.stem.replace("cutlist_", "")
-    if not out_words:
-        sys.exit("nenhuma palavra sobreviveu ao remap — cutlist/transcript batem?")
-    out_manifest = args.out_manifest or Path(f"output/motion_manifest_{slug}.json")
-    out_srt = args.out_srt or Path(f"output/captions_{slug}.srt")
-```
-
-ATENÇÃO: no arquivo atual, as linhas `slug = ...`, `out_manifest = ...` e `out_srt = ...` vêm ANTES da leitura dos JSONs — esta mudança move a definição de slug/paths para DEPOIS (o slug agora depende do modo). Conferir que nenhuma variável é usada antes de definida.
-
-- [ ] **Step 6.6: `prepare_compose.py` — aviso de Dur. divergente** — no loop de print final, trocar:
+- [ ] **Step 6.5: `prepare_compose.py` — aviso de Dur. divergente** — no loop de print final, trocar:
 
 ```python
     for i, sc in enumerate(scenes):
@@ -735,10 +752,11 @@ ATENÇÃO: no arquivo atual, as linhas `slug = ...`, `out_manifest = ...` e `out
         if sc.get("dur") and abs(secao - sc["dur"]) > 0.5:
             print(f"    AVISO: brief declara {sc['dur']}s, seção real tem "
                   f"{secao:.2f}s — motion será truncado ou vai sobrar "
-                  f"(brief autorado sobre fala errada? use o transcript_cut)")
+                  f"(brief autorado sobre fala divergente? gerar do handoff "
+                  f"do corte aprovado)")
 ```
 
-- [ ] **Step 6.7: Teste de regressão do caminho antigo com dados reais** (o meetily tem brief? Se `~/development/MotionSkills/motion-graphics/src/videos/` não tiver dir com brief + clips renderizados, pular execução e validar só por leitura de código):
+- [ ] **Step 6.6: Teste de regressão do caminho existente com dados reais** (o meetily tem brief? Se `~/development/MotionSkills/motion-graphics/src/videos/` não tiver dir com brief + clips renderizados, pular execução e validar só por leitura de código):
 
 ```bash
 ls ~/development/MotionSkills/motion-graphics/src/videos/
@@ -752,11 +770,11 @@ Se existir `<nome>` com `brief.md` E `~/development/MotionSkills/motion-graphics
 
 Expected: roda até o fim como antes (manifest + srt gerados), agora possivelmente com AVISOs de Dur.
 
-- [ ] **Step 6.8: Commit**
+- [ ] **Step 6.7: Commit**
 
 ```bash
 git add src/compose.py src/prepare_compose.py tests/test_compose.py
-git commit -m "prepare_compose: modo transcript_cut (fala real) + aviso de Dur. divergente no brief"
+git commit -m "Higiene: parse_brief_scenes lê a coluna Dur. e o prepare_compose avisa divergência"
 ```
 
 ---
@@ -776,7 +794,6 @@ from compose import (find_scene_starts, format_srt, group_captions,
                      merge_corrected_text, parse_srt, remap_words_by_clips)
 from cut_artifacts import (infer_speed_rate, segments_from_clips,
                            write_cut_artifacts)
-from format_transcript_md import write_transcript_md
 
 
 def media_duration(path: Path) -> float:
@@ -796,7 +813,6 @@ def media_duration(path: Path) -> float:
             transcript, style.get("speed", {}).get("rate", 1.2))
         p_cut, p_tr = write_cut_artifacts(
             transcript, segments_from_clips(clips), "timeline", slug, rate)
-        write_transcript_md(json.loads(p_tr.read_text()), slug)
         print(f"artefatos do corte atualizados: {p_cut.name}, {p_tr.name}")
 ```
 
@@ -1010,32 +1026,18 @@ git commit -m "diff_copy: trava do checkpoint 2 — copy aprovada × fala real d
 
 ---
 
-### Task 9: MotionSkills — modo real (durações exatas) + entrada por arquivo
+### Task 9: MotionSkills — só o CLAUDE.md raiz (o modo exato é do plano irmão)
+
+> **Escopo reduzido na reconciliação:** o modo de durações exatas na skill
+> `transcript-to-motion` é implementado pelo plano irmão (fonte `handoff`,
+> detectada pelo cabeçalho `Fonte: corte aprovado`). NÃO editar SKILL.md nem a
+> GOLDEN RULE aqui — verificar que a task correspondente do plano irmão está
+> feita. Deste plano, só o ponteiro na raiz do repo.
 
 **Files:**
-- Modify: `~/development/MotionSkills/motion-graphics/.claude/skills/transcript-to-motion/SKILL.md` (§1 e §4)
-- Modify: `~/development/MotionSkills/motion-graphics/CLAUDE.md` (GOLDEN RULE, item da linha ~19)
 - Create: `~/development/MotionSkills/CLAUDE.md` (raiz do repo — ponteiro)
 
-- [ ] **Step 9.1: SKILL.md §1 (Input detection)** — adicionar como PRIMEIRO bullet da lista:
-
-```markdown
-- A file path or pasted content whose FIRST line contains `timestamps REAIS do corte` → **real-mode**: this is the transcript of the APPROVED CUT (`transcript_cut_<slug>.md`, written by EditorClaude's checkpoint). If given a path, Read the file. Real-mode changes §4 — durations are exact, not estimated.
-```
-
-- [ ] **Step 9.2: SKILL.md §4 (Duration & safety margin)** — adicionar ao FIM da seção:
-
-```markdown
-- **Real-mode (transcript of the approved cut):** scene duration = EXACT speech time of its excerpt — no +20%, no 3s minimum. Master duration = the cut duration declared in the header line — no ×1.2, no rounding up. The +20% / min-3s / ×1.2 rules exist to absorb ESTIMATION error; with checkpoint timestamps there is none, and any padding becomes truncated frames downstream (`build_mg_clips` trims, never stretches). Loopable scenes are still marked (loop is texture, not time-filling, in real-mode).
-```
-
-- [ ] **Step 9.3: GOLDEN RULE no CLAUDE.md** — trocar o item 2 da regra (que hoje diz para invocar a skill quando o usuário cola transcrição) para cobrir caminho de arquivo. Localizar a linha da GOLDEN RULE que descreve o gatilho e acrescentar após ela:
-
-```markdown
-The same rule applies when the user provides a PATH to a `transcript_cut_*.md` file (EditorClaude checkpoint output): Read it and run the full pipeline in real-mode (see the transcript-to-motion skill, §1/§4 — exact durations, no +20%).
-```
-
-- [ ] **Step 9.4: Criar `~/development/MotionSkills/CLAUDE.md`** (raiz — o projeto real vive em `motion-graphics/`):
+- [ ] **Step 9.1: Criar `~/development/MotionSkills/CLAUDE.md`** (raiz — o projeto real vive em `motion-graphics/`):
 
 ```markdown
 # MotionSkills
@@ -1043,22 +1045,20 @@ The same rule applies when the user provides a PATH to a `transcript_cut_*.md` f
 O projeto real vive em `motion-graphics/` — leia `motion-graphics/CLAUDE.md`
 (regras de pipeline, GOLDEN RULE, convenções de render).
 
-Papel no pipeline do canal: recebe do EditorClaude o `transcript_cut_<slug>.md`
-(fala REAL do corte aprovado no checkpoint 1) e autora o brief em modo real —
-durações exatas por seção, sem margem de +20%. Nunca autorar brief sobre a copy
-pré-gravação quando existir transcript_cut do vídeo.
+Papel no pipeline do canal: recebe do EditorClaude o `handoff_<slug>.md`
+(fala REAL do corte aprovado no checkpoint 1, com grafia corrigida pela copy e
+marcadores TELA) e autora o brief com durações exatas por seção, sem margem de
++20% (fonte `handoff` da skill transcript-to-motion). Nunca autorar brief sobre
+a copy pré-gravação quando existir handoff do vídeo.
 ```
 
-- [ ] **Step 9.5: Verificar e commitar (MotionSkills):**
+- [ ] **Step 9.2: Commitar (MotionSkills):**
 
 ```bash
 cd ~/development/MotionSkills/motion-graphics
-grep -n "real-mode" .claude/skills/transcript-to-motion/SKILL.md CLAUDE.md
-git add .claude/skills/transcript-to-motion/SKILL.md CLAUDE.md ../CLAUDE.md
-git commit -m "transcript-to-motion: modo real (transcript_cut do EditorClaude, durações exatas)"
+git add ../CLAUDE.md
+git commit -m "CLAUDE.md raiz: ponteiro pro motion-graphics + papel no pipeline (handoff)"
 ```
-
-Expected do grep: ≥3 ocorrências (2 no SKILL.md, 1 no CLAUDE.md).
 
 ---
 
@@ -1069,45 +1069,34 @@ Expected do grep: ≥3 ocorrências (2 no SKILL.md, 1 no CLAUDE.md).
 - Create: `~/development/EditorClaude/CLAUDE.md`
 - Modify: `~/development/EditorClaude/README.md` (linhas 117-118 e ~230)
 
-- [ ] **Step 10.1: SKILL.md — substituir o bloco de comandos da seção 3b** (do `# 1. cola: manifest resolvido...` até o fim do bloco ```bash com o qa_captions) por:
+- [ ] **Step 10.1: SKILL.md — inserções ADITIVAS sobre o fluxo do plano irmão.** Pré-condição: o plano irmão já reescreveu a sequência 3b (handoff entre o checkpoint de corte e a etapa motions). Read na SKILL.md atual e inserir três coisas, sem tocar no resto:
+
+**(a)** No item do CHECKPOINT de corte (onde o usuário aprova a edição), logo ANTES do passo de gerar o handoff, adicionar:
 
 ```bash
-# 1. ETAPA CORTE: timeline só com câmera + voz (V1 vazia -> Close Gap
-#    funciona; SEM manifest — o brief nasce DEPOIS do corte)
-.venv/bin/python adapters/premiere_mcp/compose_premiere.py <video> output/cutlist_<slug>.json --sequence-name reel_<slug> --somente-corte
-# 2. CHECKPOINT 1: usuário edita o corte e avisa quando fechou. Ao fechar,
-#    PERSISTIR o corte (única etapa que exige Premiere aberto):
+#    Ao fechar o corte, PERSISTIR a fonte de verdade (única etapa que exige
+#    Premiere aberto — depois disso re-render, diff e handoff funcionam sem ele):
 .venv/bin/python adapters/premiere_mcp/export_cut.py output/transcript_<slug>.json --sequence-name reel_<slug>
-# 3. BRIEF NO MOTIONSKILLS a partir da fala REAL do corte: abrir sessão no
-#    MotionSkills passando output/transcript_cut_<slug>.md (modo real da skill
-#    transcript-to-motion — durações exatas, sem +20%). Renderizar os clips.
-# 4. cola: manifest resolvido + SRT MAIÚSCULO — usar os ARTEFATOS DO CORTE
-#    (não o transcript/cutlist originais, que ficaram pra trás no checkpoint):
-.venv/bin/python src/prepare_compose.py output/transcript_cut_<slug>.json output/cutlist_final_<slug>.json ~/development/MotionSkills/motion-graphics/src/videos/<nome>
-# 5. REVISAR o SRT contra o brief (transcrição erra: cloud->Claude,
-#    admira->ADMIN...) — corrigir SÓ texto, nunca timestamps
-# 6. ETAPA MOTIONS: lê o corte ATUAL da timeline, sobe motions fatiados nos
-#    cortes reais + música + punch-in, e REFRESCA os artefatos do corte:
-.venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa motions
-# 7. CHECKPOINT 2: usuário revisa dinamismo; COR manual (Paste Attributes da
-#    referência em V2, NUNCA Motion/Crop). ANTES DE PUBLICAR, a TRAVA:
-.venv/bin/python src/diff_copy.py <copy-aprovada.md> output/transcript_cut_<slug>.json
-#    Divergência em CTA ou fosso = corrigir antes de publicar. A copy aprovada
-#    vem do EstudoConteudo (tabela copies / arquivo de copy do repo).
-# 8. ETAPA LEGENDAS (sempre a última — lê o áudio ATUAL da timeline):
-.venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa legendas --corrected-srt output/captions_<slug>.srt
-# 9. QA DA LEGENDA (sempre rodar após a etapa legendas): re-transcreve o áudio
-#    do corte final e diffa com a legenda — pega frase que o ASR ENGOLIU.
-.venv/bin/python adapters/premiere_mcp/qa_captions_premiere.py <video> output/captions_reel_<slug>_final.srt --sequence-name reel_<slug>
-# 10. PÓS-PUBLICAÇÃO (destilação pro vault): a conclusão do diff (passo 7)
-#    vira seção datada apendada em
-#    "~/development/2Cerebro/03 Recursos/Aprendizados de Conteúdo/O vídeo
-#    gravado não é o roteiro aprovado.md" (conclusão qualitativa em português;
-#    MÉTRICA NUNCA) + 1 linha no topo de
-#    "~/development/2Cerebro/99 Contexto/log.md".
 ```
 
-Manter intactos os parágrafos após o bloco (motion como autorado, música, cor, Track Style) e o restante da skill.
+**(b)** No item do CHECKPOINT 2 (revisão de dinamismo + cor manual), adicionar ao final:
+
+```bash
+#    ANTES DE PUBLICAR, a TRAVA de copy (checkpoint 2):
+.venv/bin/python src/diff_copy.py <copy-aprovada.md> output/transcript_cut_<slug>.json
+#    Divergência em CTA ou fosso = corrigir antes de publicar (regravar o
+#    trecho ou aceitar por escrito). Foco: CTA, fosso, keyword.
+```
+
+**(c)** Após o passo de QA de legendas, adicionar como item final do fluxo:
+
+```bash
+# PÓS-PUBLICAÇÃO (destilação pro vault): a conclusão do diff vira seção
+# datada apendada em "~/development/2Cerebro/03 Recursos/Aprendizados de
+# Conteúdo/O vídeo gravado não é o roteiro aprovado.md" (conclusão
+# qualitativa em português; MÉTRICA NUNCA) + 1 linha no topo de
+# "~/development/2Cerebro/99 Contexto/log.md".
+```
 
 - [ ] **Step 10.2: Criar `~/development/EditorClaude/CLAUDE.md`:**
 
@@ -1126,10 +1115,10 @@ Este repo é o dono da FONTE DE VERDADE DO CORTE. No fechamento do CHECKPOINT 1
 - `output/cutlist_final_<slug>.json` — o corte real, re-renderizável sem Premiere
 - `output/transcript_cut_<slug>.json` — fala remapeada pro tempo do corte
   (score, silences, offsets corte↔fonte, `source.speed_rate`)
-- `output/transcript_cut_<slug>.md` — prosa MM:SS que o MotionSkills consome
-  em modo real (brief com durações EXATAS)
 
-O brief de motion NUNCA nasce da copy pré-gravação quando existe transcript_cut.
+O contrato pro MotionSkills é o `output/handoff_<slug>.md`
+(`prepare_motion_handoff.py` — fala real + grafia da copy + marcadores TELA).
+O brief de motion NUNCA nasce da copy pré-gravação quando existe handoff.
 No CHECKPOINT 2, `diff_copy.py` compara copy aprovada × fala real — trava de
 publicação (CTA, fosso, keyword). Timestamps de fonte referem-se ao arquivo
 transcrito (na prática o `_12x`; o fator vive em `source.speed_rate`).
@@ -1207,7 +1196,7 @@ do brief agora validada. Pendente: validação E2E no próximo vídeo real.
 
 **Files:** nenhum — checklist de aceite (critérios de sucesso da spec)
 
-- [ ] **12.1:** Gravar um vídeo novo e rodar o fluxo v2 completo (SKILL 3b): corte → checkpoint 1 → `export_cut` → brief no MotionSkills via `transcript_cut_<slug>.md` → render → `prepare_compose` com os artefatos do corte → motions → checkpoint 2 com `diff_copy` → legendas → QA.
+- [ ] **12.1:** Gravar um vídeo novo e rodar o fluxo v2 completo (SKILL 3b, já com o plano irmão mergeado): corte → checkpoint 1 → `export_cut` + `prepare_motion_handoff` → brief no MotionSkills via handoff → render → `prepare_compose` → motions → checkpoint 2 com `diff_copy` → legendas → QA.
 - [ ] **12.2 (critério 2):** conferir no relatório do prepare_compose que NENHUMA cena tem AVISO de divergência >0.5s, e no vídeo final que nenhum motion foi truncado no meio de um beat.
 - [ ] **12.3 (critério 3):** fechar o Premiere depois do checkpoint 1 e confirmar que brief + diff_copy rodam só com os artefatos.
 - [ ] **12.4 (critério 4):** o diff rodou ANTES de publicar; pós-publicação, a seção datada entrou na nota do vault e o log registrou.
@@ -1221,6 +1210,7 @@ do brief agora validada. Pendente: validação E2E no próximo vídeo real.
 1. Registrar decisão em `99 Contexto/decisoes/` (híbrido, ordem dos subprojetos, EditorClaude no ecossistema, nome "Destilação pro vault").
 2. Atualizar tabela "Ecossistema técnico" de `contexto-luiz.md` (adicionar EditorClaude).
 3. Corrigir wording de imutabilidade dos repos no CLAUDE.md do vault.
+4. **CONFLITO ENTRE AS DUAS SPECS APROVADAS — decidir:** de onde o pipeline lê a copy aprovada. A spec do vault (05/08, achado 7 da Peneira) diz **EstudoConteudo** (tabela copies; Swipe é arquivo pós-publicação); a spec motion-checkpoint (04/08, item 4) diz **nota do vault** (área Conteúdo, `status: entregue-ao-pipeline`). O `diff_copy.py` e o `prepare_motion_handoff.py` recebem caminho de arquivo — funcionam com qualquer decisão — mas a fonte canônica precisa ser UMA, registrada em `decisoes/`.
 
 ## Notas para o executor
 

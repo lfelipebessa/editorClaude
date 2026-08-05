@@ -16,7 +16,9 @@ render final editável é do usuário; o mp4 automático usa o composer ffmpeg.
 
 Uso (Premiere aberto com painel MCP Bridge iniciado, projeto já aberto):
     python adapters/premiere_mcp/compose_premiere.py <video> <cutlist.json> \
-        <manifest.json> --srt <legendas.srt> [--sequence-name reel] [--timeout 120]
+        [<manifest.json>] --srt <legendas.srt> [--sequence-name reel] [--timeout 120]
+No modo --somente-corte o manifest é dispensado (molde de formato é gerado
+automaticamente).
 """
 
 import argparse
@@ -167,15 +169,23 @@ def ensure_mold_clip(w: int, h: int, fps: int) -> Path:
     """Clipe preto de 1s usado só como molde de formato da sequência —
     create_sequence abriria o diálogo modal New Sequence, então a sequência
     precisa nascer de um clipe (dança validada do render_premiere). Gerado
-    uma vez em output/ (gitignored)."""
+    uma vez em output/ (gitignored). Gravação atômica (tmp + replace): um
+    ffmpeg morto no meio nunca deixa o mold.mp4 final truncado, o que
+    faria o cache `if not mold.exists()` engolir um arquivo corrompido."""
+    w, h, fps = int(w), int(h), int(fps)
     mold = (Path(__file__).resolve().parent.parent.parent
             / "output" / f"mold_{w}x{h}_{fps}.mp4")
     if not mold.exists():
         mold.parent.mkdir(exist_ok=True)
-        subprocess.run(
-            [FFMPEG, "-hide_banner", "-loglevel", "error",
-             "-f", "lavfi", "-i", f"color=black:s={w}x{h}:r={fps}",
-             "-t", "1", "-pix_fmt", "yuv420p", str(mold)], check=True)
+        tmp = mold.with_suffix(".tmp.mp4")
+        try:
+            subprocess.run(
+                [FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+                 "-f", "lavfi", "-i", f"color=black:s={w}x{h}:r={fps}",
+                 "-t", "1", "-pix_fmt", "yuv420p", str(tmp)], check=True)
+        except (FileNotFoundError, subprocess.CalledProcessError) as e:
+            sys.exit(f"ffmpeg falhou ao gerar o molde: {e}")
+        tmp.replace(mold)
     return mold
 
 

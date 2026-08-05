@@ -19,7 +19,8 @@ FRONTMATTER_RE = re.compile(r"\A---\r?\n.*?\r?\n---\r?\n", re.DOTALL)
 # (**TELA:**) e case-insensitive (Tela:). O prefixo de lista/quote não inclui
 # "*" — senão ele engole o "**" de "**TELA:**" antes da alternativa bater.
 TELA_RE = re.compile(
-    r"^\s*(?:[->]\s*)*(?:\*\*TELA:\*\*|TELA\s*:)\s*(.+?)\s*$",
+    r"^\s*(?:[->]\s*|\*\s+)*"
+    r"(?:\*\*TELA:\*\*|\*TELA:\*|\*{1,2}TELA\*{1,2}\s*:|TELA\s*:)\s*(.+?)\s*$",
     re.IGNORECASE)
 # prefixo de tempo de bloco na copy: `0:00`, `[00:19]`, `0:00 → 0:07`...
 TIME_PREFIX_RE = re.compile(
@@ -122,3 +123,109 @@ def merge_with_copy(words: list[dict], copy_chunks: list[dict]) -> list[dict]:
             for w in words[i1:i2]:
                 out.append({**w, "matched": False})
     return out
+
+
+def build_blocks(bounds: list[tuple[float, float]],
+                 min_dur: float = 1.5) -> list[dict]:
+    """Clipes do corte (tempo do corte final) -> blocos do handoff.
+
+    Bloco com menos de min_dur funde com o SEGUINTE (jump cuts do preset
+    seco são curtos demais como unidade de cena — regra do spec); sobra
+    final curta funde com o anterior.
+    """
+    blocks, cur_start, cur_end = [], None, None
+    for start, end in bounds:
+        if cur_start is None:
+            cur_start, cur_end = start, end
+        else:
+            cur_end = end
+        if cur_end - cur_start >= min_dur:
+            blocks.append({"start": cur_start, "end": cur_end})
+            cur_start = None
+    if cur_start is not None:
+        if blocks:
+            blocks[-1]["end"] = cur_end
+        else:
+            blocks.append({"start": cur_start, "end": cur_end})
+    return blocks
+
+
+def assign_words(blocks: list[dict], words: list[dict]) -> None:
+    """Palavra pertence ao bloco em que COMEÇA (mesma regra do composer)."""
+    for b in blocks:
+        b["words"] = [w for w in words if b["start"] <= w["start"] < b["end"]]
+
+
+def anchor_telas(telas: list[dict], words: list[dict],
+                 blocks: list[dict]) -> None:
+    """Reancora cada TELA: no bloco onde o trecho de copy anterior a ela foi
+    realmente falado (fuzzy sequencial, mesmo esquema do find_scene_starts).
+    Sem âncora (TELA no começo da copy) -> bloco 1.
+    """
+    if not blocks:
+        return
+    tokens = [normalize_text(w["word"]) for w in words]
+    pos = 0
+    for tela in telas:
+        target = [normalize_text(t) for t in tela["anchor"]
+                  if normalize_text(t)]
+        if not target or not words:
+            blocks[0].setdefault("telas", []).append(tela["text"])
+            continue
+        n = len(target)
+        best_score, best_j = -1.0, pos
+        for j in range(pos, max(pos + 1, len(tokens) - n + 1)):
+            window = " ".join(tokens[j:j + n])
+            score = SequenceMatcher(None, " ".join(target), window).ratio()
+            if score > best_score:
+                best_score, best_j = score, j
+        t = words[min(best_j + n - 1, len(words) - 1)]["end"]
+        block = next((b for b in blocks if b["start"] <= t <= b["end"]),
+                     blocks[-1])
+        block.setdefault("telas", []).append(tela["text"])
+        pos = best_j + 1
+
+
+DIVERGENCE_THRESHOLD = 0.5  # fração de palavras sem par na copy
+
+
+def divergent_blocks(blocks: list[dict]) -> list[int]:
+    """Índices (1-based) dos blocos onde a maioria das palavras não casou
+    com a copy — o relatório que vai junto no envio (não bloqueia)."""
+    out = []
+    for i, b in enumerate(blocks, 1):
+        n = len(b.get("words", []))
+        if n and sum(1 for w in b["words"]
+                     if not w.get("matched")) / n > DIVERGENCE_THRESHOLD:
+            out.append(i)
+    return out
+
+
+def _fmt_time(t: float) -> str:
+    m, s = divmod(t, 60)
+    return f"{int(m)}:{s:04.1f}"
+
+
+def format_handoff(slug: str, blocks: list[dict],
+                   copy_ref: str | None) -> str:
+    """Blocos anotados -> handoff.md (contrato v1 do spec)."""
+    total = blocks[-1]["end"] if blocks else 0.0
+    lines = [f"# Handoff — {slug}  (v1)",
+             f"Fonte: corte aprovado (EditorClaude) · Corte: {total:.1f}s · "
+             f"Blocos: {len(blocks)}"]
+    lines.append(f"Copy: [[{copy_ref}]]" if copy_ref else
+                 "Copy: NENHUMA — texto 100% ASR, revisar grafia de marcas "
+                 "antes de gerar motions")
+    lines += ["", "## Blocos"]
+    for b in blocks:
+        text = " ".join(w["word"] for w in b.get("words", []))
+        lines.append(f"{_fmt_time(b['start'])} → {_fmt_time(b['end'])}  {text}")
+        for tela in b.get("telas", []):
+            lines.append(f"TELA: {tela}")
+    div = divergent_blocks(blocks)
+    if div:
+        lines += ["", "## Divergências (revisar se necessário)"]
+        for i in div:
+            text = " ".join(w["word"] for w in blocks[i - 1]["words"])
+            lines.append(f'- bloco {i}: sem correspondência na copy ("{text}")')
+    return "\n".join(lines) + "\n"

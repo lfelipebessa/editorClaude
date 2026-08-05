@@ -8,7 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from motion_handoff import merge_with_copy, parse_copy
+from motion_handoff import (anchor_telas, assign_words, build_blocks,
+                            format_handoff, merge_with_copy, parse_copy)
 
 
 def W(word, start, end, clip=0):
@@ -100,10 +101,11 @@ def test_parse_copy_tela_variantes():
           "isso aqui\n"
           "- TELA: OUTRA\n"
           "tela: TERCEIRA\n"
-          "> TELA: QUARTA\n")
+          "> TELA: QUARTA\n"
+          "**TELA**: QUINTA\n")
     chunks, telas = parse_copy(md)
     assert [t["text"] for t in telas] == ["MEETILY", "OUTRA", "TERCEIRA",
-                                          "QUARTA"], telas
+                                          "QUARTA", "QUINTA"], telas
     assert "TELA" not in chunks[0]["text"], chunks
     assert "MEETILY" not in chunks[0]["text"], chunks
 
@@ -115,6 +117,70 @@ def test_parse_copy_limpa_markdown_da_prosa():
     assert "**" not in text and "[[" not in text and "]]" not in text, text
     assert text.split() == ["o", "Meetily", "roda", "uso", "o", "Claude",
                             "Code", "direto"], text
+
+
+def test_build_blocks_funde_curto_com_seguinte():
+    bounds = [(0.0, 1.0), (1.0, 3.0), (3.0, 3.8)]
+    blocks = build_blocks(bounds, min_dur=1.5)
+    # (0,1.0) é curto -> funde com o seguinte; sobra final curta -> anterior
+    assert [(b["start"], b["end"]) for b in blocks] == [(0.0, 3.8)], blocks
+
+
+def test_build_blocks_sem_fusao():
+    bounds = [(0.0, 2.0), (2.0, 5.5)]
+    blocks = build_blocks(bounds, min_dur=1.5)
+    assert [(b["start"], b["end"]) for b in blocks] == [(0.0, 2.0),
+                                                        (2.0, 5.5)], blocks
+
+
+def test_assign_words_pertence_pelo_inicio():
+    blocks = [{"start": 0.0, "end": 2.0}, {"start": 2.0, "end": 4.0}]
+    words = [W("a", 0.1, 0.4), W("b", 1.9, 2.3), W("c", 2.5, 3.0)]
+    assign_words(blocks, words)
+    assert [w["word"] for w in blocks[0]["words"]] == ["a", "b"]
+    assert [w["word"] for w in blocks[1]["words"]] == ["c"]
+
+
+def test_anchor_tela_cai_no_bloco_do_trecho():
+    blocks = [{"start": 0.0, "end": 2.0}, {"start": 2.0, "end": 4.0}]
+    words = [W("call", 0.2, 0.5), W("sem", 0.6, 0.8), W("isso", 0.9, 1.2),
+             W("roda", 2.1, 2.4), W("tudo", 2.5, 2.8), W("local", 2.9, 3.3)]
+    telas = [{"text": "**MEETILY**", "anchor": ["roda", "tudo", "local"]}]
+    anchor_telas(telas, words, blocks)
+    assert blocks[1].get("telas") == ["**MEETILY**"], blocks
+    assert "telas" not in blocks[0]
+
+
+def test_anchor_tela_sem_ancora_vai_pro_primeiro_bloco():
+    blocks = [{"start": 0.0, "end": 2.0}, {"start": 2.0, "end": 4.0}]
+    words = [W("oi", 0.1, 0.3)]
+    telas = [{"text": "**ABRE**", "anchor": []}]
+    anchor_telas(telas, words, blocks)
+    assert blocks[0].get("telas") == ["**ABRE**"]
+
+
+def test_format_handoff_cabecalho_blocos_divergencia():
+    blocks = [{"start": 0.0, "end": 2.0,
+               "words": [{**W("Claude", 0.1, 0.5), "matched": True},
+                         {**W("Code", 0.6, 1.0), "matched": True}],
+               "telas": ["**MEETILY**"]},
+              {"start": 2.0, "end": 4.0,
+               "words": [{**W("improviso", 2.1, 2.6), "matched": False},
+                         {**W("total", 2.7, 3.2), "matched": False}]}]
+    md = format_handoff("meetily", blocks, "Copy Meetily")
+    assert md.startswith("# Handoff — meetily  (v1)\n"), md
+    assert "Fonte: corte aprovado (EditorClaude) · Corte: 4.0s · Blocos: 2" in md
+    assert "Copy: [[Copy Meetily]]" in md
+    assert "0:00.0 → 0:02.0  Claude Code" in md, md
+    assert "TELA: **MEETILY**" in md
+    assert "## Divergências" in md and "bloco 2" in md, md
+
+
+def test_format_handoff_sem_copy_avisa():
+    blocks = [{"start": 0.0, "end": 2.0,
+               "words": [{**W("oi", 0.1, 0.5), "matched": False}]}]
+    md = format_handoff("x", blocks, None)
+    assert "Copy: NENHUMA" in md, md
 
 
 if __name__ == "__main__":

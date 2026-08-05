@@ -175,7 +175,7 @@ Dado um vídeo bruto `<video>`:
    `assets/music/*.m4a` (extrair de mp4: `ffmpeg -i in.mp4 -vn -c:a copy
    out.m4a`) — o ganho se autocalibra pela medição. No Premiere ela entra em
    A2 cortada no fim do vídeo com o ganho no clipe (fade out manual, se quiser).
-   Na etapa de cor (passo 6), se o usuário não for usar a referência, a
+   Na etapa de cor (passo 7), se o usuário não for usar a referência, a
    grade escalar entra por script nos clipes de V2 (track_index=1) com
    build_lumetri_jsx + noise_from_style. O enquadramento padrão da câmera
    (cabeça quase encostando na divisa: Scale 58, Position [0.58, 0.6825] +

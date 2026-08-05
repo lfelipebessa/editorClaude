@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from compose import _word_in_range
+from compose import word_in_range
 
 
 def infer_speed_rate(transcript: dict, rate_if_12x: float) -> float:
@@ -66,7 +66,7 @@ def remap_words_rich(words: list[dict], table: list[dict]) -> list[dict]:
     out = []
     for i, row in enumerate(table):
         for w in words:
-            if _word_in_range(w, row["src_start"], row["src_end"]):
+            if word_in_range(w, row["src_start"], row["src_end"]):
                 start = row["cut_start"] + max(w["start"], row["src_start"]) - row["src_start"]
                 end = row["cut_start"] + min(w["end"], row["src_end"]) - row["src_start"]
                 out.append({**w, "clip": i,
@@ -97,6 +97,7 @@ def write_cut_artifacts(transcript: dict, segments: list[dict], origem: str,
     origem: "timeline" (corte pós-edição humana) ou "cutlist" (automático) —
     os dois divergem depois do checkpoint; o campo diz qual verdade é esta.
     """
+    out_dir.mkdir(parents=True, exist_ok=True)
     table = offset_table(segments)
     # score default 0.0 espelha a convenção de transcribe.py (w.get("score", 0.0)) —
     # cobre palavras de transcripts antigos gravados antes desse default existir.

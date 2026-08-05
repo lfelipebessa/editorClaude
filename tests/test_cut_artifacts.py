@@ -11,6 +11,8 @@ from cut_artifacts import (cut_to_src, infer_speed_rate, offset_table,
                            write_cut_artifacts)
 
 # --- sintético ---
+assert offset_table([]) == []
+
 segs = [{"src_start": 10.0, "src_end": 12.0}, {"src_start": 20.0, "src_end": 21.0}]
 table = offset_table(segs)
 assert table == [

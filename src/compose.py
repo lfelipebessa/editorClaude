@@ -21,7 +21,7 @@ def normalize_text(text: str) -> str:
     return " ".join(text.split())
 
 
-def _word_in_range(w: dict, lo: float, hi: float) -> bool:
+def word_in_range(w: dict, lo: float, hi: float) -> bool:
     """Pertencimento de palavra a um trecho mantido [lo, hi).
 
     Decide pelo INÍCIO da palavra: o aligner estica só o fim (às vezes
@@ -36,16 +36,19 @@ def _word_in_range(w: dict, lo: float, hi: float) -> bool:
     return w["start"] < lo <= mid < hi
 
 
+_word_in_range = word_in_range  # alias retrocompatível (nome antigo, privado)
+
+
 def remap_words(words: list[dict], cut_segments: list[dict]) -> list[dict]:
     """Palavras com tempo do bruto -> tempo do corte final.
 
-    Palavra pertence ao segmento em que COMEÇA (ver _word_in_range); palavras
+    Palavra pertence ao segmento em que COMEÇA (ver word_in_range); palavras
     em região removida são descartadas (não existem no vídeo final).
     """
     out, offset = [], 0.0
     for i, seg in enumerate(cut_segments):
         for w in words:
-            if _word_in_range(w, seg["start"], seg["end"]):
+            if word_in_range(w, seg["start"], seg["end"]):
                 start = offset + max(w["start"], seg["start"]) - seg["start"]
                 end = offset + min(w["end"], seg["end"]) - seg["start"]
                 out.append({"word": w["word"], "clip": i,
@@ -60,12 +63,12 @@ def remap_words_by_clips(words: list[dict], clips: list[dict]) -> list[dict]:
     Cada clip = {start (posição na timeline), inPoint, outPoint (trecho do
     bruto)}. Diferente do remap_words (cutlist cumulativa), aqui a posição
     vem do próprio clipe — sobrevive a cortes, encurtamentos e gaps.
-    Palavra pertence ao clipe em que COMEÇA (ver _word_in_range).
+    Palavra pertence ao clipe em que COMEÇA (ver word_in_range).
     """
     out = []
     for i, clip in enumerate(sorted(clips, key=lambda c: c["start"])):
         for w in words:
-            if _word_in_range(w, clip["inPoint"], clip["outPoint"]):
+            if word_in_range(w, clip["inPoint"], clip["outPoint"]):
                 start = clip["start"] + max(w["start"], clip["inPoint"]) - clip["inPoint"]
                 end = clip["start"] + min(w["end"], clip["outPoint"]) - clip["inPoint"]
                 out.append({"word": w["word"], "clip": i,

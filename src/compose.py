@@ -172,8 +172,10 @@ def parse_brief_scenes(md: str) -> list[dict]:
         # âncora curta (5 palavras): prende no COMEÇO da seção; trecho longo
         # arrasta o match para o meio quando a fala real diverge do brief
         trecho = cells[1].strip().strip('"').lstrip("…").strip()
+        m_dur = re.search(r"([\d]+(?:[.,]\d+)?)\s*s", cells[4]) if len(cells) > 4 else None
         scenes.append({"num": cells[0],
                        "match": " ".join(trecho.split()[:5]),
+                       "dur": float(m_dur.group(1).replace(",", ".")) if m_dur else None,
                        "loop": cells[5].strip().lower().startswith("s")})
     return scenes
 

@@ -104,8 +104,14 @@ def main() -> None:
     print(f"manifest: {out_manifest} ({len(scenes)} cenas sobre {total}s)")
     for i, sc in enumerate(scenes):
         end = scenes[i + 1]["start"] if i + 1 < len(scenes) else total
+        secao = end - sc["start"]
         print(f"  {Path(sc['clip']).name:20s} t={sc['start']:6.2f}s "
-              f"secao={end - sc['start']:5.2f}s loop={sc['loop']}")
+              f"secao={secao:5.2f}s loop={sc['loop']}")
+        if sc.get("dur") and abs(secao - sc["dur"]) > 0.5:
+            print(f"    AVISO: brief declara {sc['dur']}s, seção real tem "
+                  f"{secao:.2f}s — motion será truncado ou vai sobrar "
+                  f"(brief autorado sobre fala divergente? gerar do handoff "
+                  f"do corte aprovado)")
     print(f"srt: {out_srt} ({len(chunks)} legendas, "
           f"{'MAIÚSCULAS' if cap_cfg.get('uppercase', True) else 'como faladas'})")
     print("IMPORTANTE: revisar o SRT contra o brief antes do render — "

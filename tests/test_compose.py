@@ -165,3 +165,16 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# --- parse_brief_scenes lê a coluna Dur. (higiene 2026-08-05) ---
+from compose import parse_brief_scenes
+brief = """
+| # | Trecho (resumo) | Conceito visual | Skill | Dur. | Loop | Layout |
+|---|---|---|---|---|---|---|
+| 01 | "Instalei o plugin novo" | hook | cinematic-camera | 6s | não | fullscreen |
+| 02 | "Funciona assim na prática" | demo | terminal-inserts | 12.5s | sim | split-safe |
+"""
+scenes = parse_brief_scenes(brief)
+assert scenes[0]["dur"] == 6.0 and scenes[1]["dur"] == 12.5
+assert scenes[1]["loop"] is True
+print("parse_brief_scenes lê Dur.: OK")

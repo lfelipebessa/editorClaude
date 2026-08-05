@@ -10,6 +10,15 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-04-motion-checkpoint-design.md` (aprovado).
 
+> **STATUS DE EXECUÇÃO (2026-08-05):** Tasks 1–3 executadas e revisadas. Os
+> blocos de código da Task 1 foram sincronizados com os fixes de review; os
+> das Tasks 2–3 NÃO — o repo é a verdade (commits `536dd11..bd819c9` contêm
+> fixes de review por cima: `_fmt_time` arredonda antes de fatiar, divergência
+> só existe quando há copy, mkdir do --out, sort defensivo, removeprefix).
+> Quem reexecutar o plano do zero deve preferir o código do repo aos blocos
+> das Tasks 2–3. Coordenação com o plano irmão: ver
+> `2026-08-05-fundacao-2cerebro-pipeline-checkpoint.md` (seção COORDENAÇÃO).
+
 **Convenções deste repo (obrigatórias):**
 - Testes rodam com `.venv/bin/python tests/<arquivo>.py` — sem pytest.
 - Commits direto na `main`, mensagens em pt-BR no estilo do log (`Handoff: ...`), push após cada bloco commitado (remote `lfelipebessa/editorClaude`).
@@ -513,7 +522,7 @@ def format_handoff(slug: str, blocks: list[dict],
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/python tests/test_handoff.py`
-Expected: `13 testes passaram`
+Expected: `18 testes passaram`
 
 - [ ] **Step 5: Commit**
 
@@ -899,21 +908,26 @@ git commit -m "rough-cut: motions nascem do corte aprovado — handoff no 3b + a
 Run: `.venv/bin/python src/prepare_motion_handoff.py output/transcript_meetily.json --cutlist output/cutlist_meetily.json`
 Expected: AVISO de cutlist + AVISO de sem copy; `handoff: output/handoff_meetily.md (N blocos, ~37s...)` — sem traceback.
 
-- [ ] **Step 2: Conferir blocos contra o manifest que funcionou**
+- [ ] **Step 2: Validar invariantes estruturais do handoff**
 
 Run: `cat output/handoff_meetily.md`
 
-Verificação manual: os starts das cenas do `output/motion_manifest_meetily.json`
-(0.0, 1.626, 10.564, 20.542, 26.509, 32.482) devem coincidir com INÍCIOS de
-bloco do handoff (tolerância ±0.05s — o manifest foi resolvido por âncora de
-palavra, o bloco começa no clipe). Blocos a mais são esperados (handoff é
-mais granular que cena); bloco começando onde nenhuma cena começa é ok, cena
-começando onde nenhum bloco começa é BUG (fronteira de cena tem que ser
-fronteira de bloco).
+ATENÇÃO (corrigido na review da Task 2): NÃO comparar inícios de bloco com os
+starts do `motion_manifest_meetily.json` — aqueles vieram do
+`find_scene_starts` ancorando em palavra no MEIO de clipe (fluxo velho,
+copy→fuzzy) e não podem coincidir com fronteira de bloco; no fluxo novo a
+causalidade inverte (o MotionSkills escolhe cenas A PARTIR dos blocos).
+Critérios que validam de verdade (já medidos verdes no dado real na review):
+- blocos ladrilham o corte inteiro sem gap/overlap (0.000 → 40.023 no meetily);
+- nenhuma palavra do remap se perde (179 → 179 no meetily);
+- nenhum bloco com duração < min_dur (1.5s);
+- granularidade suficiente para 3–8 cenas (15 blocos no meetily);
+- leitura humana: texto dos blocos é o falado real; TELA e Divergências
+  fazem sentido.
 
 - [ ] **Step 3: Corrigir o que a golden run revelar**
 
-Se houver divergência de fronteira, debugar `build_blocks`/`remap_words` com
+Se algum invariante falhar, debugar `build_blocks`/`remap_words` com
 o dado real antes de seguir (systematic-debugging). Commitar o fix com teste
 novo em `tests/test_handoff.py` reproduzindo o caso.
 

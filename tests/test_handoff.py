@@ -8,8 +8,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from motion_handoff import (anchor_telas, assign_words, build_blocks,
-                            format_handoff, merge_with_copy, parse_copy)
+from motion_handoff import (_fmt_time, anchor_telas, assign_words,
+                            build_blocks, format_handoff, merge_with_copy,
+                            parse_copy)
 
 
 def W(word, start, end, clip=0):
@@ -181,6 +182,13 @@ def test_format_handoff_sem_copy_avisa():
                "words": [{**W("oi", 0.1, 0.5), "matched": False}]}]
     md = format_handoff("x", blocks, None)
     assert "Copy: NENHUMA" in md, md
+
+
+def test_fmt_time_arredonda_antes_de_fatiar():
+    assert _fmt_time(59.96) == "1:00.0"
+    assert _fmt_time(599.96) == "10:00.0"
+    assert _fmt_time(0.0) == "0:00.0"
+    assert _fmt_time(125.3) == "2:05.3"
 
 
 if __name__ == "__main__":

@@ -202,8 +202,9 @@ def divergent_blocks(blocks: list[dict]) -> list[int]:
 
 
 def _fmt_time(t: float) -> str:
-    m, s = divmod(t, 60)
-    return f"{int(m)}:{s:04.1f}"
+    ds = round(t * 10)          # décimos: arredonda ANTES de fatiar
+    m, ds = divmod(ds, 600)
+    return f"{m}:{ds / 10:04.1f}"
 
 
 def format_handoff(slug: str, blocks: list[dict],
@@ -227,5 +228,6 @@ def format_handoff(slug: str, blocks: list[dict],
         lines += ["", "## Divergências (revisar se necessário)"]
         for i in div:
             text = " ".join(w["word"] for w in blocks[i - 1]["words"])
-            lines.append(f'- bloco {i}: sem correspondência na copy ("{text}")')
+            lines.append(f'- bloco {i}: maioria sem correspondência na copy '
+                        f'("{text}")')
     return "\n".join(lines) + "\n"

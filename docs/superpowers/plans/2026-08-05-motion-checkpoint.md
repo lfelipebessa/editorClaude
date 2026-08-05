@@ -85,6 +85,33 @@ def test_merge_sem_copy_marca_tudo_nao_casado():
     assert out[0]["word"] == "oi" and out[0]["matched"] is False
 
 
+def test_merge_palavra_nao_falada_nunca_entra_mesmo_em_replace():
+    # regressão: "eu" da copy não pode substituir "terminei"/"a"/"call" só
+    # porque o alinhamento global jogou os dois lados no mesmo opcode.
+    words = [W("terminei", 0.0, 0.4), W("a", 0.5, 0.6), W("call", 0.7, 1.0)]
+    copy = [{"text": "eu"}]
+    out = merge_with_copy(words, copy)
+    assert [w["word"] for w in out] == ["terminei", "a", "call"], out
+    assert [w["matched"] for w in out] == [False, False, False], out
+
+
+def test_merge_marca_partida_colapsa_com_timing_do_span():
+    words = [W("chat", 0.0, 0.4), W("gpt", 0.4, 0.9)]
+    copy = [{"text": "ChatGPT"}]
+    out = merge_with_copy(words, copy)
+    assert [w["word"] for w in out] == ["ChatGPT"], out
+    assert out[0]["matched"] is True
+    assert out[0]["start"] == 0.0 and out[0]["end"] == 0.9, out
+
+
+def test_merge_grafia_parecida_continua_corrigindo():
+    words = [W("cloud", 0.0, 0.4)]
+    copy = [{"text": "Claude"}]
+    out = merge_with_copy(words, copy)
+    assert [w["word"] for w in out] == ["Claude"], out
+    assert out[0]["matched"] is True
+
+
 def test_parse_copy_ignora_frontmatter_heading_timestamp():
     md = ("---\ntipo: ideia\nstatus: trabalhada\n---\n"
           "# Gancho\n"
@@ -104,6 +131,28 @@ def test_parse_copy_ignora_frontmatter_heading_timestamp():
 def test_parse_copy_vazia():
     chunks, telas = parse_copy("---\ntipo: ideia\n---\n")
     assert chunks == [] and telas == []
+
+
+def test_parse_copy_tela_variantes():
+    md = ("**TELA:** MEETILY\n"
+          "isso aqui\n"
+          "- TELA: OUTRA\n"
+          "tela: TERCEIRA\n"
+          "> TELA: QUARTA\n")
+    chunks, telas = parse_copy(md)
+    assert [t["text"] for t in telas] == ["MEETILY", "OUTRA", "TERCEIRA",
+                                          "QUARTA"], telas
+    assert "TELA" not in chunks[0]["text"], chunks
+    assert "MEETILY" not in chunks[0]["text"], chunks
+
+
+def test_parse_copy_limpa_markdown_da_prosa():
+    md = "o **Meetily** roda\nuso o [[Claude Code]] direto\n"
+    chunks, telas = parse_copy(md)
+    text = chunks[0]["text"]
+    assert "**" not in text and "[[" not in text and "]]" not in text, text
+    assert text.split() == ["o", "Meetily", "roda", "uso", "o", "Claude",
+                            "Code", "direto"], text
 
 
 if __name__ == "__main__":
@@ -140,20 +189,36 @@ from difflib import SequenceMatcher
 
 from compose import normalize_text
 
-FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.DOTALL)
-TELA_RE = re.compile(r"^\s*TELA:\s*(.+)$")
+FRONTMATTER_RE = re.compile(r"\A---\r?\n.*?\r?\n---\r?\n", re.DOTALL)
+# marcador TELA: forma nua, bullet (-), blockquote (>), label em negrito
+# (**TELA:**) e case-insensitive (Tela:). O prefixo de lista/quote não inclui
+# "*" — senão ele engole o "**" de "**TELA:**" antes da alternativa bater.
+TELA_RE = re.compile(
+    r"^\s*(?:[->]\s*)*(?:\*\*TELA:\*\*|TELA\s*:)\s*(.+?)\s*$",
+    re.IGNORECASE)
 # prefixo de tempo de bloco na copy: `0:00`, `[00:19]`, `0:00 → 0:07`...
 TIME_PREFIX_RE = re.compile(
     r"^\[?\d{1,2}:\d{2}(?:[.,]\d+)?\]?"
     r"(?:\s*(?:→|->|—|-)\s*\[?\d{1,2}:\d{2}(?:[.,]\d+)?\]?)?\s*")
+# formatação inline do Obsidian que não sobrevive na PROSA (TELA mantém como
+# está — motion designer lê o texto original do marcador).
+MD_EMPHASIS_RE = re.compile(r"\*{1,3}(\S.*?\S|\S)\*{1,3}")
+WIKILINK_RE = re.compile(r"\[\[([^\]|]+?)(?:\|[^\]]*)?\]\]")
+# abaixo disso a similaridade de grafia é coincidência, não a mesma palavra
+# dita diferente — vira substituição só quando bate de verdade.
+SUBST_MIN_RATIO = 0.6
 
 
 def parse_copy(md: str) -> tuple[list[dict], list[dict]]:
     """Copy do vault -> (chunks de prosa para o merge, marcadores TELA).
 
-    Ignora frontmatter YAML, headings e prefixos de timestamp. Cada TELA
-    guarda as últimas 5 palavras de prosa vistas antes dele — a âncora que
-    anchor_telas usa para reancorar no tempo real do corte.
+    Ignora frontmatter YAML, headings e prefixos de timestamp. Formatação
+    inline do Obsidian (**negrito**/*itálico*, [[wikilink]]) é removida da
+    PROSA antes de virar palavra — quem casa com o falado é o texto puro.
+    O marcador TELA mantém seu texto como está no vault (não é prosa, é
+    instrução visual literal para o motion designer). Cada TELA guarda as
+    últimas 5 palavras de prosa (já limpas) vistas antes dele — a âncora
+    que anchor_telas usa para reancorar no tempo real do corte.
     """
     md = FRONTMATTER_RE.sub("", md)
     prose_words, telas = [], []
@@ -167,6 +232,8 @@ def parse_copy(md: str) -> tuple[list[dict], list[dict]]:
                           "anchor": prose_words[-5:]})
             continue
         line = TIME_PREFIX_RE.sub("", line)
+        line = WIKILINK_RE.sub(r"\1", line)
+        line = MD_EMPHASIS_RE.sub(r"\1", line)
         if line:
             prose_words.extend(line.split())
     chunks = [{"text": " ".join(prose_words)}] if prose_words else []
@@ -177,10 +244,26 @@ def merge_with_copy(words: list[dict], copy_chunks: list[dict]) -> list[dict]:
     """Palavras do corte (verdade de conteúdo e tempo) + copy (verdade de
     grafia) -> palavras com grafia corrigida e proveniência `matched`.
 
-    equal/replace: grafia da copy, timing do falado. replace pareia 1:1 até
-    onde dá (ASR ouviu "chat gpt" para "ChatGPT" — sobra fica como ASR).
-    delete (falado sem par): fica como o ASR ouviu, matched=False.
-    insert (copy nunca falada): descartada.
+    equal: grafia da copy, timing do falado, matched=True.
+
+    replace: o SequenceMatcher pareou um trecho falado com um trecho da
+    copy, mas isso não garante que seja A MESMA palavra escrita diferente —
+    pode ser um "eu" da copy caindo por acaso no lugar de "terminei a call"
+    no alinhamento global. Por isso replace passa por um gate de
+    similaridade de grafia (SUBST_MIN_RATIO) antes de virar substituição:
+    - N:1 (vários tokens falados -> um token da copy, ex. ASR "chat" "gpt"
+      para copy "ChatGPT"): só colapsa em uma palavra se a grafia batida
+      for parecida o bastante; timing do span inteiro (start do primeiro,
+      end do último). Se não bater, cai pro caso 1:1 abaixo.
+    - 1:1 (index a index, até onde os dois lados alcançarem): substitui
+      só o par cuja grafia é parecida (ratio >= SUBST_MIN_RATIO) — troca
+      de palavra genuinamente diferente (baixa similaridade) fica como o
+      ASR ouviu, matched=False, nunca vira a palavra errada da copy.
+    - sobra de um lado (span mais longo que tokens): fica como ASR,
+      matched=False.
+
+    delete (falado sem par na copy): fica como o ASR ouviu, matched=False.
+    insert (copy nunca falada): descartada — nunca entra no handoff.
     """
     if not copy_chunks:
         return [{**w, "matched": False} for w in words]
@@ -196,9 +279,18 @@ def merge_with_copy(words: list[dict], copy_chunks: list[dict]) -> list[dict]:
                             "matched": True})
         elif tag == "replace":
             span, tokens = words[i1:i2], corr_tokens[j1:j2]
+            if (len(tokens) == 1 and len(span) > 1 and SequenceMatcher(
+                    None, "".join(a[i1:i2]), b[j1]).ratio() >= SUBST_MIN_RATIO):
+                out.append({**span[0], "end": span[-1]["end"],
+                            "word": tokens[0], "matched": True})
+                continue
             n = min(len(span), len(tokens))
             for k in range(n):
-                out.append({**span[k], "word": tokens[k], "matched": True})
+                if SequenceMatcher(None, a[i1 + k],
+                                   b[j1 + k]).ratio() >= SUBST_MIN_RATIO:
+                    out.append({**span[k], "word": tokens[k], "matched": True})
+                else:
+                    out.append({**span[k], "matched": False})
             for w in span[n:]:
                 out.append({**w, "matched": False})
         elif tag == "delete":
@@ -210,7 +302,7 @@ def merge_with_copy(words: list[dict], copy_chunks: list[dict]) -> list[dict]:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `.venv/bin/python tests/test_handoff.py`
-Expected: `6 testes passaram`
+Expected: `11 testes passaram`
 
 - [ ] **Step 5: Commit**
 

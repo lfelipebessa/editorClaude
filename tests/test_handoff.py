@@ -47,6 +47,33 @@ def test_merge_sem_copy_marca_tudo_nao_casado():
     assert out[0]["word"] == "oi" and out[0]["matched"] is False
 
 
+def test_merge_palavra_nao_falada_nunca_entra_mesmo_em_replace():
+    # regressão: "eu" da copy não pode substituir "terminei"/"a"/"call" só
+    # porque o alinhamento global jogou os dois lados no mesmo opcode.
+    words = [W("terminei", 0.0, 0.4), W("a", 0.5, 0.6), W("call", 0.7, 1.0)]
+    copy = [{"text": "eu"}]
+    out = merge_with_copy(words, copy)
+    assert [w["word"] for w in out] == ["terminei", "a", "call"], out
+    assert [w["matched"] for w in out] == [False, False, False], out
+
+
+def test_merge_marca_partida_colapsa_com_timing_do_span():
+    words = [W("chat", 0.0, 0.4), W("gpt", 0.4, 0.9)]
+    copy = [{"text": "ChatGPT"}]
+    out = merge_with_copy(words, copy)
+    assert [w["word"] for w in out] == ["ChatGPT"], out
+    assert out[0]["matched"] is True
+    assert out[0]["start"] == 0.0 and out[0]["end"] == 0.9, out
+
+
+def test_merge_grafia_parecida_continua_corrigindo():
+    words = [W("cloud", 0.0, 0.4)]
+    copy = [{"text": "Claude"}]
+    out = merge_with_copy(words, copy)
+    assert [w["word"] for w in out] == ["Claude"], out
+    assert out[0]["matched"] is True
+
+
 def test_parse_copy_ignora_frontmatter_heading_timestamp():
     md = ("---\ntipo: ideia\nstatus: trabalhada\n---\n"
           "# Gancho\n"
@@ -66,6 +93,28 @@ def test_parse_copy_ignora_frontmatter_heading_timestamp():
 def test_parse_copy_vazia():
     chunks, telas = parse_copy("---\ntipo: ideia\n---\n")
     assert chunks == [] and telas == []
+
+
+def test_parse_copy_tela_variantes():
+    md = ("**TELA:** MEETILY\n"
+          "isso aqui\n"
+          "- TELA: OUTRA\n"
+          "tela: TERCEIRA\n"
+          "> TELA: QUARTA\n")
+    chunks, telas = parse_copy(md)
+    assert [t["text"] for t in telas] == ["MEETILY", "OUTRA", "TERCEIRA",
+                                          "QUARTA"], telas
+    assert "TELA" not in chunks[0]["text"], chunks
+    assert "MEETILY" not in chunks[0]["text"], chunks
+
+
+def test_parse_copy_limpa_markdown_da_prosa():
+    md = "o **Meetily** roda\nuso o [[Claude Code]] direto\n"
+    chunks, telas = parse_copy(md)
+    text = chunks[0]["text"]
+    assert "**" not in text and "[[" not in text and "]]" not in text, text
+    assert text.split() == ["o", "Meetily", "roda", "uso", "o", "Claude",
+                            "Code", "direto"], text
 
 
 if __name__ == "__main__":

@@ -114,6 +114,11 @@ Dado um vídeo bruto `<video>`:
    .venv/bin/python src/prepare_motion_handoff.py output/transcript_<slug>.json --copy "<nota de copy no 2Cerebro>" --sequence-name reel_<slug>
    #    -> na nota de copy do vault: frontmatter ganha status:
    #       entregue-ao-pipeline e o slug (campos que o template já prevê)
+   #    -> convenção da copy: TELA: escrito imediatamente APÓS a frase sobre
+   #       a qual o texto deve aparecer (a âncora são as palavras ANTERIORES
+   #       ao marcador; TELA antes da frase cai um bloco cedo). Antes de
+   #       enviar, conferir as linhas TELA: do handoff — cada uma pertence ao
+   #       bloco ACIMA; checagem de 10s que evita re-render.
    #    -> enviar o handoff (com o relatório de Divergências) ao Produtor
    #       de Video do MotionSkills via Maestri; agente DESSELECIONADO no
    #       canvas; geração (brief -> cenas -> render) roda em paralelo —

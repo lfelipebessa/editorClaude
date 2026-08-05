@@ -21,6 +21,7 @@ Uso (Premiere aberto com painel MCP Bridge iniciado, projeto já aberto):
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -28,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from render_premiere import (BRIDGE_TEMP_DIR, SERVER_ENTRY, MCPError,
                              MCPStdioClient, build_batch, find_key)
 
-from render_ffmpeg import (load_style, measure_music_loudness,  # noqa: E402
+from render_ffmpeg import (FFMPEG, load_style, measure_music_loudness,  # noqa: E402
                            music_gain_db, resolve_music_file)
 
 
@@ -160,6 +161,22 @@ def build_position_y_jsx(track_index: int, y_norm: float) -> str:
       }}
       return JSON.stringify({{success: true, clips: done}});
     """
+
+
+def ensure_mold_clip(w: int, h: int, fps: int) -> Path:
+    """Clipe preto de 1s usado só como molde de formato da sequência —
+    create_sequence abriria o diálogo modal New Sequence, então a sequência
+    precisa nascer de um clipe (dança validada do render_premiere). Gerado
+    uma vez em output/ (gitignored)."""
+    mold = (Path(__file__).resolve().parent.parent.parent
+            / "output" / f"mold_{w}x{h}_{fps}.mp4")
+    if not mold.exists():
+        mold.parent.mkdir(exist_ok=True)
+        subprocess.run(
+            [FFMPEG, "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", f"color=black:s={w}x{h}:r={fps}",
+             "-t", "1", "-pix_fmt", "yuv420p", str(mold)], check=True)
+    return mold
 
 
 def import_item(client: MCPStdioClient, path: Path) -> str:
@@ -296,13 +313,13 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
         print(f"projeto aberto: {info.get('name')}")
 
         if somente_corte:
-            # etapa 1: só câmera + voz; o 1º motion entra apenas como molde
-            # de formato da sequência (1080x1920 @30). Motions/legenda/música
-            # sobem na etapa 2 (finalize_premiere), sincronizados ao corte
-            # FINAL do usuário.
+            # etapa 1: só câmera + voz; um clipe-molde preto dá o formato da
+            # sequência (1080x1920 @30) — clips de motion ainda não existem,
+            # nascem do corte aprovado (spec 2026-08-04).
             print("importando mídia (etapa CORTE: câmera + molde de formato)...")
             cam_id = import_item(client, video)
-            mg_ids = [import_item(client, Path(scenes[0]["clip"]))]
+            mg_ids = [import_item(client, ensure_mold_clip(
+                seq_w, seq_h, layout.get("fps", 30)))]
             srt_id = None
         else:
             print("importando mídia (câmera + motions + srt)...")
@@ -419,7 +436,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("video", type=Path)
     parser.add_argument("cutlist", type=Path)
-    parser.add_argument("manifest", type=Path)
+    parser.add_argument("manifest", type=Path, nargs="?", default=None,
+                        help="opcional com --somente-corte (clips ainda não existem)")
     parser.add_argument("--srt", type=Path, default=None)
     parser.add_argument("--sequence-name", default="reel_composto")
     parser.add_argument("--timeout", type=float, default=120.0)
@@ -434,16 +452,21 @@ def main() -> None:
                              "finalize_premiere.py, sincronizados ao corte final")
     args = parser.parse_args()
 
-    for p in (args.video, args.cutlist, args.manifest):
+    if args.manifest is None and not args.somente_corte:
+        sys.exit("manifest é obrigatório fora de --somente-corte")
+    for p in (args.video, args.cutlist) + \
+            ((args.manifest,) if args.manifest else ()):
         if not p.exists():
             sys.exit(f"não encontrado: {p}")
     if args.srt and not args.srt.exists():
         sys.exit(f"SRT não encontrado: {args.srt}")
     cutlist = json.loads(args.cutlist.read_text())
-    manifest = json.loads(args.manifest.read_text())
-    for sc in manifest["scenes"]:
-        if not Path(sc["clip"]).exists():
-            sys.exit(f"clipe de motion não encontrado: {sc['clip']}")
+    manifest = (json.loads(args.manifest.read_text()) if args.manifest
+                else {"scenes": [], "layout": {}})
+    if not args.somente_corte:
+        for sc in manifest["scenes"]:
+            if not Path(sc["clip"]).exists():
+                sys.exit(f"clipe de motion não encontrado: {sc['clip']}")
 
     music_cfg = load_style(args.style).get("music")
     music_file = None

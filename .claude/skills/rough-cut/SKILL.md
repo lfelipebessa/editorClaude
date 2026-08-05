@@ -91,37 +91,48 @@ Dado um vídeo bruto `<video>`:
      vertical, extrair 1 frame do meio e conferir o enquadramento do rosto; ajustar
      `--crop-x-offset` se necessário.
 
-3b. **Reel composto com motion graphics** — quando existir dir do vídeo no
-   MotionSkills (`~/development/MotionSkills/motion-graphics/src/videos/<nome>/`
-   com `brief.md` e clips renderizados em `out/<nome>/clips/`), este é o
-   FORMATO PADRÃO do Reel: motions em cima, câmera embaixo, legendas na divisa.
+3b. **Reel composto com motion graphics** — FORMATO PADRÃO do Reel do canal:
+   motions em cima, câmera embaixo, legendas na divisa. Desde 2026-08-05 os
+   motions NASCEM DO CORTE APROVADO (spec 2026-08-04-motion-checkpoint): não
+   existe mais gerar motion da copy antes da gravação — o dir do vídeo no
+   MotionSkills é criado no meio deste fluxo, a partir do handoff.
 
    **Metodologia em ETAPAS com checkpoints do usuário (padrão desde
-   2026-07-31): CORTE → checkpoint → MOTIONS+MÚSICA → checkpoint + cor
+   2026-07-31; handoff desde 2026-08-05): CORTE → checkpoint → HANDOFF →
+   geração no MotionSkills (paralela) → MOTIONS+MÚSICA → checkpoint + cor
    manual → LEGENDAS por último.** O corte automático sempre precisa de
-   ajuste fino humano, e legenda por último absorve qualquer retoque das
-   etapas anteriores sem precisar de recaption:
+   ajuste fino humano, e legenda por último absorve qualquer retoque:
 
    ```bash
-   # 1. cola: manifest resolvido (âncoras textuais do brief) + SRT MAIÚSCULO
+   # 1. ETAPA CORTE: timeline só com câmera + voz, SEM manifest (clips de
+   #    motion ainda não existem — V1 vazia -> Close Gap funciona)
+   .venv/bin/python adapters/premiere_mcp/compose_premiere.py <video> output/cutlist_<slug>.json --sequence-name reel_<slug> --somente-corte
+   # 2. CHECKPOINT: usuário edita o corte e avisa quando fechou
+   # 3. HANDOFF (corte aprovado -> MotionSkills): lê o corte FINAL da
+   #    timeline, mescla com a copy do vault (grafia + TELA:) e gera
+   #    output/handoff_<slug>.md
+   .venv/bin/python src/prepare_motion_handoff.py output/transcript_<slug>.json --copy "<nota de copy no 2Cerebro>" --sequence-name reel_<slug>
+   #    -> na nota de copy do vault: frontmatter ganha status:
+   #       entregue-ao-pipeline e o slug (campos que o template já prevê)
+   #    -> enviar o handoff (com o relatório de Divergências) ao Produtor
+   #       de Video do MotionSkills via Maestri; agente DESSELECIONADO no
+   #       canvas; geração (brief -> cenas -> render) roda em paralelo —
+   #       seguir o fluxo quando os clips chegarem (maestri notify)
+   # 4. cola (SÓ depois dos clips chegarem): manifest resolvido + SRT
    .venv/bin/python src/prepare_compose.py output/transcript_<slug>.json output/cutlist_<slug>.json ~/development/MotionSkills/motion-graphics/src/videos/<nome>
-   # 2. REVISAR o SRT contra o brief (transcrição erra: cloud->Claude,
+   # 5. REVISAR o SRT contra o HANDOFF (transcrição erra: cloud->Claude,
    #    admira->ADMIN...) — corrigir SÓ texto, nunca timestamps
-   # 3. ETAPA CORTE: timeline só com câmera + voz (V1 vazia -> Close Gap
-   #    funciona; usuário faz os ajustes manuais de corte com liberdade)
-   .venv/bin/python adapters/premiere_mcp/compose_premiere.py <video> output/cutlist_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --somente-corte
-   # 4. CHECKPOINT: usuário edita o corte e avisa quando fechou
-   # 5. ETAPA MOTIONS: lê o corte FINAL da timeline e sobe motions fatiados
+   # 6. ETAPA MOTIONS: lê o corte FINAL da timeline e sobe motions fatiados
    #    nos cortes reais + música aparada ao fim do conteúdo + punch-in de
    #    abertura automático (1º clipe da câmera E do motion abrem em Scale
    #    120 ABSOLUTO assentando na base de cada um em 0.4s, blur só na
    #    câmera — seção punch_in do style)
    .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa motions
-   # 6. CHECKPOINT: usuário revisa o dinamismo; COR entra aqui, manual:
+   # 7. CHECKPOINT: usuário revisa o dinamismo; COR entra aqui, manual:
    #    Paste Attributes da referência em V2 (NUNCA marcar Motion/Crop)
-   # 7. ETAPA LEGENDAS (sempre a última — lê o áudio ATUAL da timeline):
+   # 8. ETAPA LEGENDAS (sempre a última — lê o áudio ATUAL da timeline):
    .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa legendas --corrected-srt output/captions_<slug>.srt
-   # 8. QA DA LEGENDA (sempre rodar após a etapa legendas): re-transcreve o
+   # 9. QA DA LEGENDA (sempre rodar após a etapa legendas): re-transcreve o
    #    áudio do corte final e diffa com a legenda — pega frase que o ASR
    #    ENGOLIU no bruto (ex.: "Terminei a call" virou a palavra falsa "Eu";
    #    palavra que não existe no transcript nunca vira legenda). Diff tem
@@ -130,6 +141,12 @@ Dado um vídeo bruto `<video>`:
    #    timestamps de fonte que o QA imprime), tokens no SRT corrigido, e
    #    refazer com recaption.
    .venv/bin/python adapters/premiere_mcp/qa_captions_premiere.py <video> output/captions_reel_<slug>_final.srt --sequence-name reel_<slug>
+   # 10. ARQUIVAR NO VAULT (fecha o ciclo com o 2Cerebro): nota de resultado
+   #    seguindo 98 Templates/ e 99 Contexto/arquitetura-do-vault.md — NUNCA
+   #    inventar estrutura nova. A nota linka [[copy]], traz o transcript
+   #    real do corte (texto corrido dos blocos do handoff), o brief e os
+   #    caminhos dos artefatos locais. Métrica NÃO entra (é assunto do
+   #    EstudoConteudo/Supabase — regra do template).
    ```
    `--etapa tudo` (default do finalize) sobe motions+música+legendas de uma
    vez — usar só quando o usuário dispensar os checkpoints intermediários.

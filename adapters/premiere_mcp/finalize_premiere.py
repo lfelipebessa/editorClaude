@@ -39,7 +39,7 @@ from compose_premiere import (add_music, build_mg_clips, build_position_y_jsx,
 from render_premiere import (BRIDGE_TEMP_DIR, SERVER_ENTRY, MCPError,
                              MCPStdioClient, find_key, load_style)
 
-from render_ffmpeg import resolve_music_file  # noqa: E402
+from render_ffmpeg import FFPROBE, resolve_music_file  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
 from compose import (find_scene_starts, format_srt, group_captions,
@@ -155,10 +155,13 @@ def apply_punch_in(client: MCPStdioClient, seq_id: str, punch_cfg: dict,
 
 
 def media_duration(path: Path) -> float:
-    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
-                          "format=duration", "-of", "csv=p=0", str(path)],
-                         capture_output=True, text=True, check=True)
-    return float(out.stdout.strip())
+    try:
+        out = subprocess.run([FFPROBE, "-v", "error", "-show_entries",
+                              "format=duration", "-of", "csv=p=0", str(path)],
+                             capture_output=True, text=True, check=True)
+        return float(out.stdout.strip())
+    except (subprocess.CalledProcessError, ValueError) as e:
+        raise MCPError(f"ffprobe falhou em {path.name} (clipe corrompido/incompleto?): {e}")
 
 
 def main() -> None:

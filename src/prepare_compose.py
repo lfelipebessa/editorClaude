@@ -107,7 +107,7 @@ def main() -> None:
         secao = end - sc["start"]
         print(f"  {Path(sc['clip']).name:20s} t={sc['start']:6.2f}s "
               f"secao={secao:5.2f}s loop={sc['loop']}")
-        if sc.get("dur") and abs(secao - sc["dur"]) > 0.5:
+        if sc.get("dur") is not None and abs(secao - sc["dur"]) > 0.5:
             print(f"    AVISO: brief declara {sc['dur']}s, seção real tem "
                   f"{secao:.2f}s — motion será truncado ou vai sobrar "
                   f"(brief autorado sobre fala divergente? gerar do handoff "

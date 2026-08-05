@@ -73,7 +73,7 @@ def main() -> None:
     if not args.transcript.exists():
         sys.exit(f"não encontrado: {args.transcript}")
 
-    slug = args.transcript.stem.replace("transcript_", "")
+    slug = args.transcript.stem.removeprefix("transcript_")
     out_path = args.out or Path(f"output/handoff_{slug}.md")
 
     transcript = json.loads(args.transcript.read_text())
@@ -83,6 +83,7 @@ def main() -> None:
     if args.sequence_name:
         clips = read_timeline_bounds(args.sequence_name, args.camera_track,
                                      args.media_name, args.timeout)
+        clips = sorted(clips, key=lambda c: c["start"])
         out_words = remap_words_by_clips(words, clips)
         bounds = [(round(c["start"], 3), round(c["end"], 3)) for c in clips]
     else:
@@ -115,9 +116,10 @@ def main() -> None:
     blocks = build_blocks(bounds, min_dur=args.min_block)
     assign_words(blocks, merged)
     anchor_telas(telas, merged, blocks)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(format_handoff(slug, blocks, copy_ref))
 
-    div = divergent_blocks(blocks)
+    div = divergent_blocks(blocks) if copy_ref else []
     total = blocks[-1]["end"] if blocks else 0.0
     print(f"handoff: {out_path} ({len(blocks)} blocos, {total:.1f}s, "
           f"{len(telas)} TELA, {len(div)} divergentes)")

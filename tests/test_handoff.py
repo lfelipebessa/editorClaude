@@ -182,6 +182,7 @@ def test_format_handoff_sem_copy_avisa():
                "words": [{**W("oi", 0.1, 0.5), "matched": False}]}]
     md = format_handoff("x", blocks, None)
     assert "Copy: NENHUMA" in md, md
+    assert "## Divergências" not in md, md
 
 
 def test_fmt_time_arredonda_antes_de_fatiar():

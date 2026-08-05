@@ -223,7 +223,7 @@ def format_handoff(slug: str, blocks: list[dict],
         lines.append(f"{_fmt_time(b['start'])} → {_fmt_time(b['end'])}  {text}")
         for tela in b.get("telas", []):
             lines.append(f"TELA: {tela}")
-    div = divergent_blocks(blocks)
+    div = divergent_blocks(blocks) if copy_ref else []
     if div:
         lines += ["", "## Divergências (revisar se necessário)"]
         for i in div:

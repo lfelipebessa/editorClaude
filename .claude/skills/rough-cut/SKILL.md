@@ -188,11 +188,15 @@ Dado um vídeo bruto `<video>`:
    compose_premiere — conferir por frame exportado (cabeça a ~20-35px da
    divisa). Avisar o usuário dos toques manuais: (1) na caption track nova,
    aplicar o **Track Style `canal`** (dropdown Track Style no Essential
-   Graphics — estilo salvo pelo usuário: maiúsculas, **tamanho 70, negrito**,
-   branco com contorno preto, **centralizada no Align & Transform**; padrão
-   de fonte desde 2026-08-04, antes era 62 apoiada na divisa) — 2 cliques.
-   No burn ffmpeg o mesmo padrão sai da seção
-   `captions` do style (size 70; negrito vem da própria Arial Black); (2) se quiser as
+   Graphics — estilo salvo pelo usuário: **Open Sans Bold** (desde
+   2026-08-06, antes Arial Black), maiúsculas, **tamanho 70**, branco com
+   contorno preto, **centralizada no Align & Transform**; tamanho 70 desde
+   2026-08-04, antes era 62 apoiada na divisa) — 2 cliques. Estilizar
+   caption por script NÃO dá: nem o MCP nem o ExtendScript expõem estilo
+   de caption — o Track Style salvo é o único atalho, por isso mudança de
+   fonte = re-salvar o Track Style `canal` uma vez no Premiere.
+   No burn ffmpeg o mesmo padrão sai da seção `captions` do style
+   (font_file Open Sans Bold, size 70); (2) se quiser as
    curvas finas, Remove Attributes + Paste Attributes da referência em V2
    (NUNCA marcar Motion nem Crop); (3) travar a track da música antes de
    editar (ripple não deve encolher o bed).

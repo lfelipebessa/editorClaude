@@ -128,10 +128,13 @@ Dado um vídeo bruto `<video>`:
    # 5. REVISAR o SRT contra o HANDOFF (transcrição erra: cloud->Claude,
    #    admira->ADMIN...) — corrigir SÓ texto, nunca timestamps
    # 6. ETAPA MOTIONS: lê o corte FINAL da timeline e sobe motions fatiados
-   #    nos cortes reais + música aparada ao fim do conteúdo + punch-in de
-   #    abertura automático (1º clipe da câmera E do motion abrem em Scale
-   #    120 ABSOLUTO assentando na base de cada um em 0.4s, blur só na
-   #    câmera — seção punch_in do style)
+   #    nos cortes reais + música aparada ao fim do conteúdo + punch-ins
+   #    automáticos (punch_in.count no style, padrão 3 desde 2026-08-06):
+   #    o de abertura no 1º clipe da câmera E do motion (Scale 120 ABSOLUTO
+   #    assentando na base de cada um em 0.4s, blur só na câmera) e os
+   #    extras SÓ na câmera, nos cortes mais próximos de 1/3 e 2/3 do
+   #    conteúdo — pedido do usuário 2026-08-06: punch em TODO corte cansa,
+   #    3 pontos distribuídos dão o dinamismo certo
    .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa motions
    # 7. CHECKPOINT: usuário revisa o dinamismo; COR entra aqui, manual:
    #    Paste Attributes da referência em V2 (NUNCA marcar Motion/Crop)

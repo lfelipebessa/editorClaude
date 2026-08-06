@@ -71,27 +71,55 @@ def read_camera_clips(client: MCPStdioClient, track_index: int,
 
 def apply_punch_in(client: MCPStdioClient, seq_id: str, punch_cfg: dict,
                    camera_track: int) -> None:
-    """Punch-in de abertura (padrão do canal desde 2026-08-04): 1º clipe da
-    câmera E do motion abrem com zoom extra assentando rápido; blur só na
-    câmera. Única exceção autorizada à regra 'motion entra como autorado'.
-    Keyframes ancoram no tempo da MÍDIA (inPoint + offset) — keyframe antes
-    do inPoint cai na parte aparada do clipe e não renderiza nada."""
+    """Punch-ins do canal (padrão desde 2026-08-04; `count` desde 2026-08-06):
+    o 1º é o de abertura — clipe inicial da câmera E do motion abrem com zoom
+    extra assentando rápido, blur só na câmera. Os `count - 1` extras caem SÓ
+    na câmera, no corte cujo início fica mais perto de i/count da duração do
+    conteúdo (mesmo tratamento pico -> base + blur) — dinamismo distribuído,
+    não em todo corte. Única exceção autorizada à regra 'motion entra como
+    autorado' é o punch de abertura. Keyframes ancoram no tempo da MÍDIA
+    (inPoint + offset) — keyframe antes do inPoint cai na parte aparada do
+    clipe e não renderiza nada."""
     zoom = punch_cfg.get("zoom", 1.2)
     scale_abs = punch_cfg.get("scale_abs")
     dur = punch_cfg.get("duration", 0.4)
     blur = punch_cfg.get("blur_amount", 8)
     blur_dur = punch_cfg.get("blur_duration", 0.25)
+    count = max(1, int(punch_cfg.get("count", 1)))
 
     st = client.call_tool("get_sequence_structure", {"sequenceId": str(seq_id)})
     tracks = find_key(st, "videoTracks") or []
 
-    def primeiro(track_index: int) -> dict | None:
+    def clips_da(track_index: int) -> list[dict]:
         if track_index >= len(tracks):
-            return None
+            return []
         clips = tracks[track_index].get("clips") or []
-        return clips[0] if clips else None
+        return sorted(clips, key=lambda c: c.get("start", 0))
 
-    alvos = [(primeiro(camera_track), True), (primeiro(0), False)]
+    cam = clips_da(camera_track)
+    mot = clips_da(0)
+    alvos: list[tuple[dict, bool]] = []
+    if cam:
+        alvos.append((cam[0], True))
+    if mot:
+        alvos.append((mot[0], False))
+    if cam and count > 1:
+        fim = cam[-1].get("end", 0)
+        usados = {cam[0]["nodeId"]}
+        # clipe mais curto que 2x o assentamento não segura um punch
+        candidatos = [c for c in cam[1:]
+                      if c.get("end", 0) - c.get("start", 0) >= dur * 2]
+        for i in range(1, count):
+            livres = [c for c in candidatos if c["nodeId"] not in usados]
+            if not livres:
+                break
+            alvo_t = fim * i / count
+            escolhido = min(livres,
+                            key=lambda c: abs(c.get("start", 0) - alvo_t))
+            usados.add(escolhido["nodeId"])
+            print(f"  punch-in extra no corte de {escolhido.get('start', 0):.1f}s")
+            alvos.append((escolhido, True))
+
     for clip, com_blur in alvos:
         if not clip:
             continue
@@ -218,7 +246,9 @@ def main() -> None:
 
             punch_cfg = style.get("punch_in")
             if punch_cfg:
-                print("punch-in de abertura (câmera + motion)...")
+                n_punch = max(1, int(punch_cfg.get("count", 1)))
+                print(f"punch-ins: abertura (câmera + motion)"
+                      f"{f' + {n_punch - 1} distribuídos' if n_punch > 1 else ''}...")
                 apply_punch_in(client, str(seq_id), punch_cfg,
                                args.camera_track)
                 feito.append("punch-in")

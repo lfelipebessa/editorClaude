@@ -173,9 +173,9 @@ Dado um vídeo bruto `<video>`:
 
    **Música de fundo é padrão** (seção `music` do style): entra automática nos
    dois composers — `musicafundo3` da biblioteca `assets/music/`, ganho
-   calculado por medição para o bed cair em `bed_lufs` (-25 LUFS ≈ 11 dB
-   abaixo da voz; ajustado de -30 em 2026-07-31 a pedido do usuário — estava
-   baixo demais). Trocar: `--music <nome>` (meAndTheD, musicafundo,
+   calculado por medição para o bed cair em `bed_lufs` (-28 LUFS ≈ 14 dB
+   abaixo da voz; histórico: -30 estava baixo demais [2026-07-31], -25 alto
+   demais [2026-08-06] — o ponto do canal vive entre os dois). Trocar: `--music <nome>` (meAndTheD, musicafundo,
    musicafundo2); desligar: `--no-music`. Música nova = jogar o arquivo em
    `assets/music/*.m4a` (extrair de mp4: `ffmpeg -i in.mp4 -vn -c:a copy
    out.m4a`) — o ganho se autocalibra pela medição. No Premiere ela entra em

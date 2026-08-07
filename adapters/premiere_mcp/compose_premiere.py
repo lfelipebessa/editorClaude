@@ -49,9 +49,16 @@ def camera_transform(src_w: int, src_h: int, seq_w: int,
     baixo. O zoom faz o clipe subir acima da divisa (seq_h/2) para o rosto
     subir junto; o Crop Top corta o excesso e devolve a divisa exata — o corte
     vira transparência, então o motion de V1 continua aparecendo. Para fonte
-    4K 16:9 em 1080x1920: Scale 58, Position [0.58, 0.6825], Crop Top 22.03."""
+    4K 16:9 em 1080x1920: Scale 58, Position [0.58, 0.6825], Crop Top 22.03.
+    Fonte estreita (bruto já vertical, ex. 720x1280): o height-fill deixaria
+    barras laterais — prevalece o width-fill, com X centralizado porque a
+    largura fecha exata com a sequência (offset viraria barra de um lado)."""
     scale = round(seq_h / 2 / src_h * 100 * CAMERA_ZOOM, 2)
     position = list(CAMERA_POSITION)
+    width_fill = round(seq_w / src_w * 100, 2)
+    if width_fill > scale:
+        scale = width_fill
+        position[0] = 0.5
     clip_h = src_h * scale / 100
     clip_top = position[1] * seq_h - clip_h / 2
     crop_top = round(max(0.0, (seq_h / 2 - clip_top) / clip_h * 100), 2)

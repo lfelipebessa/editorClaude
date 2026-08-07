@@ -28,12 +28,94 @@ def tokenize(text: str) -> list[str]:
     return normalize_text(text).split()
 
 
+FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.S)
+COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
+HEADING_RE = re.compile(r"^#{1,6}\s")
+COPY_INTEGRAL_RE = re.compile(r"^(#{1,6})\s*copy integral\b", re.I)
+# marcador FALA — o único conteúdo realmente dito. Variantes: "- FALA:",
+# "**FALA:**", case-insensitive.
+FALA_RE = re.compile(r"^-?\s*\**\s*fala\s*:\s*\**\s*(.*)$", re.I)
+# TELA/VISUAL/POR QUÊ são direção de cena e justificativa — nunca foram
+# ditas em voz alta, somem inteiras (mesma fronteira do motion_handoff.TELA_RE).
+DROP_MARKER_RE = re.compile(r"^-?\s*\**\s*(tela|visual|por qu[eê])\s*:", re.I)
+# preâmbulo de planejamento da nota (Tema/Âncora/Formato) — antes da seção
+# "Copy integral" na prática, mas dropado aqui também como cinto e suspensório.
+PREAMBLE_RE = re.compile(r"^-?\s*\**\s*(tema|âncora|ancora|formato)\s*:", re.I)
+# cabeçalho de bloco em negrito: "**[0:00-0:06] GANCHO**"
+TS_HEADER_RE = re.compile(
+    r"^\*\*\[\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s*\]\s*.*?\*\*\s*$")
+# mesma convenção de motion_handoff.WIKILINK_RE: [[Alvo|Apelido]] -> Alvo
+# (não importa de lá — módulo irmão, com seus próprios gaps; ver spec).
+WIKILINK_RE = re.compile(r"\[\[([^\]|]+?)(?:\|[^\]]*)?\]\]")
+
+
+def _copy_integral_section(text: str) -> str:
+    """Isola a seção '## Copy integral' (até o próximo heading de nível
+    igual ou maior). Sem essa seção, usa o corpo inteiro — fallback para
+    notas de prosa pura (ex.: 'Skill de SEO') que não têm essa estrutura."""
+    lines = text.splitlines()
+    start = level = None
+    for i, line in enumerate(lines):
+        m = COPY_INTEGRAL_RE.match(line.strip())
+        if m:
+            start, level = i + 1, len(m.group(1))
+            break
+    if start is None:
+        return text
+    end = len(lines)
+    for j in range(start, len(lines)):
+        hm = re.match(r"^(#{1,6})\s", lines[j].strip())
+        if hm and len(hm.group(1)) <= level:
+            end = j
+            break
+    return "\n".join(lines[start:end])
+
+
 def strip_markdown(text: str) -> str:
-    """Remove frontmatter, comentários, cabeçalhos e ênfases — sobra a fala."""
-    text = re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.S)
-    text = re.sub(r"<!--.*?-->", " ", text, flags=re.S)
-    text = re.sub(r"^#{1,6}\s.*$", " ", text, flags=re.M)
-    return re.sub(r"[*_`>|]", " ", text)
+    """Extrai só a fala real da nota de copy do vault — não o roteiro
+    inteiro (que carrega TELA, VISUAL, timestamps e notas de planejamento
+    que nunca foram ditas em voz alta).
+
+    Ordem:
+    1. Isola '## Copy integral' se existir (senão usa a nota inteira).
+    2. Remove frontmatter e comentários HTML.
+    3. Linha por linha: 'FALA:' vira conteúdo mantido; 'TELA:'/'VISUAL:'/
+       'POR QUÊ:' (direção de cena) somem; preâmbulo ('**Tema:**' etc.) e
+       cabeçalho de bloco ('**[0:00-0:06] GANCHO**') somem; heading markdown
+       some.
+    4. Sem nenhuma linha FALA: na nota, cai no fallback: mantém as linhas de
+       prosa que sobraram do passo 3 (comportamento antigo, para notas sem
+       essa estrutura de roteiro).
+    5. Wikilink [[Alvo|Apelido]] -> Alvo.
+    6. Ênfase markdown (*_`>|) é removida por último.
+    """
+    text = FRONTMATTER_RE.sub("", text)
+    text = COMMENT_RE.sub(" ", text)
+    body = _copy_integral_section(text)
+
+    fala_lines, prose_lines, found_fala = [], [], False
+    for raw in body.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if TS_HEADER_RE.match(line):
+            continue
+        if DROP_MARKER_RE.match(line):
+            continue
+        if PREAMBLE_RE.match(line):
+            continue
+        m = FALA_RE.match(line)
+        if m:
+            found_fala = True
+            fala_lines.append(m.group(1))
+            continue
+        if HEADING_RE.match(line):
+            continue
+        prose_lines.append(line)
+
+    kept = "\n".join(fala_lines if found_fala else prose_lines)
+    kept = WIKILINK_RE.sub(r"\1", kept)
+    return re.sub(r"[*_`>|]", " ", kept)
 
 
 def diff_chunks(copy_tokens: list[str], spoken_tokens: list[str],

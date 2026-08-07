@@ -47,6 +47,16 @@ TS_HEADER_RE = re.compile(
 # mesma convenção de motion_handoff.WIKILINK_RE: [[Alvo|Apelido]] -> Alvo
 # (não importa de lá — módulo irmão, com seus próprios gaps; ver spec).
 WIKILINK_RE = re.compile(r"\[\[([^\]|]+?)(?:\|[^\]]*)?\]\]")
+# rubrica entre colchetes — prefixo de timestamp ("[00:00]", "[0:00 — hook,
+# dor-sintoma]") ou aside inline ("[mostra a tela]"): nunca foi dito, some
+# inteira (span + conteúdo). Roda DEPOIS do wikilink resolver (que usa
+# colchete duplo e já colapsou pro Alvo) — senão comeria o wikilink também.
+BRACKET_RE = re.compile(r"\[[^\]]*\]")
+# rubrica entre parênteses ("(atrás: grid de UIs genéricas...)") — mesma
+# lógica: direção de cena/produção, não fala. Nas notas reais examinadas a
+# fala nunca depende de parênteses; se aparecer um caso real onde a fala
+# mora entre parênteses, isso vira um TODO revisado à parte.
+PAREN_RE = re.compile(r"\([^)]*\)")
 
 
 def _copy_integral_section(text: str) -> str:
@@ -85,8 +95,13 @@ def strip_markdown(text: str) -> str:
        some.
     4. Sem nenhuma linha FALA: na nota, cai no fallback: mantém as linhas de
        prosa que sobraram do passo 3 (comportamento antigo, para notas sem
-       essa estrutura de roteiro).
-    5. Wikilink [[Alvo|Apelido]] -> Alvo.
+       essa estrutura de roteiro) — MAS o fallback também é roteiro, não
+       transcrição: prefixo de timestamp em colchetes e aside entre
+       colchetes/parênteses são tão rubrica quanto TELA/VISUAL, então os
+       passos 5b/5c abaixo valem para os dois caminhos, não só pra FALA.
+    5. Wikilink [[Alvo|Apelido]] -> Alvo; DEPOIS disso, qualquer colchete
+       [...] restante (rubrica) e parêntese (...) (rubrica) somem inteiros,
+       em qualquer um dos dois caminhos (FALA ou fallback).
     6. Ênfase markdown (*_`>|) é removida por último.
     """
     text = FRONTMATTER_RE.sub("", text)
@@ -115,6 +130,8 @@ def strip_markdown(text: str) -> str:
 
     kept = "\n".join(fala_lines if found_fala else prose_lines)
     kept = WIKILINK_RE.sub(r"\1", kept)
+    kept = BRACKET_RE.sub(" ", kept)
+    kept = PAREN_RE.sub(" ", kept)
     return re.sub(r"[*_`>|]", " ", kept)
 
 

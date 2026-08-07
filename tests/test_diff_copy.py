@@ -1,4 +1,5 @@
 """Roda direto: .venv/bin/python tests/test_diff_copy.py"""
+import re
 import sys
 from pathlib import Path
 
@@ -77,5 +78,47 @@ if vault_note.exists():
     real_spoken_tokens = tokenize(" ".join(w["word"] for w in fake_tcut_words))
     real_chunks = diff_chunks(real_copy_tokens, real_spoken_tokens)
     assert real_chunks == [], real_chunks
+
+# caminho FALLBACK (sem nenhuma linha FALA:): prefixo de timestamp em
+# colchetes ("[00:00]", "[0:00 — hook, dor-sintoma]"), aside inline entre
+# colchetes ("[mostra a tela]") e parêntese de rubrica ("(atrás: grid
+# genérico)") são tão rubrica quanto TELA/VISUAL no caminho FALA — não foram
+# ditos, têm que sumir também aqui.
+nota_fallback = (
+    "---\n"
+    "tipo: copy-publicada\n"
+    "---\n"
+    "\n"
+    "## Copy integral\n"
+    "\n"
+    "[00:00] Você já perdeu tempo tentando entender isso.\n"
+    "[0:00 — hook, dor-sintoma] Essa é a dor que todo mundo sente.\n"
+    "Aqui vem a solução [mostra a tela] que resolve tudo rapidinho.\n"
+    "Isso funciona muito bem (atrás: grid genérico) na prática.\n"
+)
+tokens_fallback = tokenize(strip_markdown(nota_fallback))
+for palavra_proibida in ("00", "hook", "sintoma", "mostra", "tela",
+                         "atrás", "grid", "genérico"):
+    assert palavra_proibida not in tokens_fallback, (palavra_proibida, tokens_fallback)
+for palavra_esperada in ("você", "perdeu", "tempo", "dor", "sente",
+                         "solução", "resolve", "funciona", "prática"):
+    assert palavra_esperada in tokens_fallback, (palavra_esperada, tokens_fallback)
+
+# segunda checagem read-only contra nota real de formato FALLBACK (sem
+# FALA:, prefixo [hh:mm] puro): ground truth calculado INDEPENDENTE de
+# strip_markdown (regex direto no texto cru, sem reusar as constantes do
+# módulo) tem que bater exatamente com o que strip_markdown produz.
+watch_note = Path(
+    "/Users/luizfelipebessa/development/2Cerebro/03 Recursos/Swipe/"
+    "Minhas copies/Claude-watch.md")
+if watch_note.exists():
+    raw = watch_note.read_text()
+    partes = re.split(r"##\s*copy integral\b", raw, maxsplit=1, flags=re.I)
+    assert len(partes) == 2, "nota Claude-watch sem heading 'Copy integral'"
+    corpo_bruto = re.sub(r"\[[^\]]*\]", " ", partes[1])
+    ground_truth_tokens = tokenize(corpo_bruto)
+    watch_tokens = tokenize(strip_markdown(raw))
+    watch_chunks = diff_chunks(ground_truth_tokens, watch_tokens)
+    assert watch_chunks == [], watch_chunks
 
 print("test_diff_copy: OK")

@@ -31,8 +31,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from render_premiere import (BRIDGE_TEMP_DIR, SERVER_ENTRY, MCPError,
                              MCPStdioClient, build_batch, find_key)
 
-from render_ffmpeg import (FFMPEG, load_style, measure_music_loudness,  # noqa: E402
-                           music_gain_db, resolve_music_file)
+from render_ffmpeg import (FFMPEG, FFPROBE, load_style,  # noqa: E402
+                           measure_music_loudness, music_gain_db,
+                           resolve_music_file)
 
 
 # Enquadramento padrão do canal (aprovado pelo usuário em 2026-07-30, validado
@@ -403,11 +404,14 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
         if find_key(result, "status") == "failure":
             raise MCPError(f"batch da câmera falhou: {result}")
 
-        # Motion da câmera: metade de baixo
-        video_info = client.call_tool("get_project_item_info",
-                                      {"projectItemId": cam_id})
-        src_w = find_key(video_info, "width") or 3840
-        src_h = find_key(video_info, "height") or 2160
+        # Motion da câmera: metade de baixo. Dimensões via ffprobe do arquivo —
+        # o get_project_item_info nem sempre traz width/height (mp4 de celular)
+        # e o antigo fallback 4K aplicava Scale 58 em fonte 720x1280.
+        probe = subprocess.run(
+            [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
+             "stream=width,height", "-of", "csv=p=0", str(video)],
+            capture_output=True, text=True, check=True).stdout.strip()
+        src_w, src_h = (int(v) for v in probe.split(",")[:2])
         scale, position, crop_top = camera_transform(int(src_w), int(src_h),
                                                      seq_w, seq_h)
         print(f"posicionando câmera (scale {scale}%, pos {position}, "

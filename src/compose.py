@@ -92,8 +92,7 @@ def merge_corrected_text(words: list[dict],
         if tag == "equal":
             for k in range(i2 - i1):
                 w = words[i1 + k]
-                out.append({"word": corr_tokens[j1 + k],
-                            "start": w["start"], "end": w["end"]})
+                out.append({**w, "word": corr_tokens[j1 + k]})
         elif tag == "replace":
             span, tokens = words[i1:i2], corr_tokens[j1:j2]
             t0, t1 = span[0]["start"], span[-1]["end"]

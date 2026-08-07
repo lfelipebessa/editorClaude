@@ -8,7 +8,7 @@ handoff (prepare_motion_handoff) funcionam SEM Premiere.
 Uso:
     python adapters/premiere_mcp/export_cut.py output/transcript_<slug>.json \
         --sequence-name reel_<slug> [--media-name dji_] [--camera-track 1] \
-        [--slug <slug>] [--style seco]
+        [--corrected-srt output/captions_<slug>.srt] [--style seco]
 """
 import argparse
 import json
@@ -22,6 +22,7 @@ from render_premiere import (BRIDGE_TEMP_DIR, SERVER_ENTRY, MCPError,
 from finalize_premiere import read_camera_clips
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
+from compose import merge_corrected_text, parse_srt
 from cut_artifacts import (infer_speed_rate, segments_from_clips,
                            write_cut_artifacts)
 
@@ -32,7 +33,7 @@ def main() -> None:
     parser.add_argument("--sequence-name", required=True)
     parser.add_argument("--media-name", default="dji_")
     parser.add_argument("--camera-track", type=int, default=1)
-    parser.add_argument("--slug", default=None)
+    parser.add_argument("--corrected-srt", type=Path, default=None)
     parser.add_argument("--style", default="seco")
     parser.add_argument("--timeout", type=float, default=120.0)
     args = parser.parse_args()
@@ -40,7 +41,17 @@ def main() -> None:
     if not args.transcript.exists():
         sys.exit(f"não encontrado: {args.transcript}")
     transcript = json.loads(args.transcript.read_text())
-    slug = args.slug or args.sequence_name.removeprefix("reel_")
+    # slug SEMPRE derivado do nome da sequência — o mesmo critério do finalize;
+    # um --slug divergente desincronizaria o nome dos artefatos que o diff_copy lê.
+    slug = args.sequence_name.removeprefix("reel_")
+
+    words = None
+    if args.corrected_srt and args.corrected_srt.exists():
+        words_extracted = [w for s in transcript["segments"]
+                           for w in s.get("words", []) if "start" in w]
+        words = merge_corrected_text(words_extracted,
+                                     parse_srt(args.corrected_srt.read_text()))
+        print(f"texto corrigido preservado de {args.corrected_srt.name}")
 
     client = MCPStdioClient(["node", str(SERVER_ENTRY)],
                             env={"PREMIERE_TEMP_DIR": BRIDGE_TEMP_DIR},
@@ -60,7 +71,7 @@ def main() -> None:
     rate = infer_speed_rate(
         transcript, load_style(args.style).get("speed", {}).get("rate", 1.2))
     p_cut, p_tr = write_cut_artifacts(transcript, segments_from_clips(clips),
-                                      "timeline", slug, rate)
+                                      "timeline", slug, rate, words=words)
     tcut = json.loads(p_tr.read_text())
     print(f"CHECKPOINT 1 persistido: {len(clips)} clipes, "
           f"corte de {tcut['cut_duration']}s (origem: timeline)")

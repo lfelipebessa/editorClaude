@@ -44,6 +44,24 @@ assert segments_from_clips(clips) == segs  # ordena pela timeline
 assert infer_speed_rate({"source": {"path": "/x/video_12x.mp4"}}, 1.2) == 1.2
 assert infer_speed_rate({"source": {"path": "/x/video.mp4"}}, 1.2) == 1.0
 
+# --- words= override: transcript_cut carrega o texto CORRIGIDO (SRT), não o
+# extraído bruto do transcript (bug real: cloud->Claude sobrevivia sem isso) ---
+transcript_synth = {
+    "source": {"path": "/x/video.mp4"},
+    "segments": [{"words": [
+        {"word": "cloud", "start": 10.1, "end": 10.4, "score": 0.9},
+        {"word": "tchau", "start": 20.2, "end": 20.6, "score": 0.7}]}]}
+corrected_words = [
+    {"word": "Claude", "start": 10.1, "end": 10.4, "score": 0.9},
+    {"word": "tchau", "start": 20.2, "end": 20.6, "score": 0.7}]
+with tempfile.TemporaryDirectory() as td:
+    _, p_tr = write_cut_artifacts(transcript_synth, segs, "timeline", "synth",
+                                  1.0, Path(td), words=corrected_words)
+    tcut = json.loads(p_tr.read_text())
+    got = [w["word"] for w in tcut["words"]]
+    assert got == ["Claude", "tchau"], got  # texto corrigido, não "cloud"
+    assert tcut["words"][0]["score"] == 0.9, tcut["words"][0]  # score preservado
+
 # --- dados reais: os DOIS footages (dji_12x e meetily — requisito da spec) ---
 root = Path(__file__).resolve().parent.parent
 for tr_name, cl_name, rate in [("transcript_dji_12x", "cutlist_dji_12x", 1.2),

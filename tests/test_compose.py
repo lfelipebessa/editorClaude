@@ -108,6 +108,23 @@ def test_merge_corrected_text_keeps_fixes_and_timing():
     assert merged[3]["start"] == 3.0, merged[3]
 
 
+def test_merge_corrected_text_preserves_extra_keys_in_equal_branch():
+    # score (e outras chaves extras) tem que sobreviver quando o timing é
+    # herdado 1:1 (branch "equal") — write_cut_artifacts depende disso pro
+    # transcript_cut não perder o score original nas palavras não corrigidas.
+    words = [{"word": w, "start": i * 1.0, "end": i * 1.0 + 0.5, "score": 0.9,
+             "clip": 0}
+             for i, w in enumerate(["eu", "estalei", "no", "cloud", "hoje"])]
+    corrected = [{"text": "EU INSTALEI", "start": 0, "end": 1.5},
+                 {"text": "NO CLAUDE HOJE", "start": 2, "end": 4.5}]
+    merged = merge_corrected_text(words, corrected)
+    # "eu" e "no"/"hoje" batem 1:1 no matcher (branch equal) -> extras sobrevivem
+    eu = merged[0]
+    assert eu["word"] == "EU" and eu["score"] == 0.9 and eu["clip"] == 0, eu
+    no = merged[2]
+    assert no["word"] == "NO" and no["score"] == 0.9 and no["clip"] == 0, no
+
+
 def test_remap_words_by_clips_follows_current_timeline():
     # layout ATUAL da timeline (pós-edição manual): clipes com posição própria
     words = [{"word": "a", "start": 10.0, "end": 10.4},

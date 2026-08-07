@@ -219,8 +219,10 @@ Um adaptador correto: concatena os `segments` na ordem dada, cortando o vídeo o
 
 ```
 src/            núcleo agnóstico de editor
-  transcribe.py   vídeo → transcript.json (WhisperX, word-level)
-  cutlist.py      transcript.json → cutlist.json
+  transcribe.py     vídeo → transcript.json (WhisperX, word-level)
+  cutlist.py        transcript.json → cutlist.json
+  cut_artifacts.py  persiste o corte aprovado (cutlist_final + transcript_cut)
+  diff_copy.py      trava do checkpoint 2: copy aprovada × fala real do corte
 adapters/       saídas
   render_ffmpeg.py   cut-list → rough_cut.mp4 (ffmpeg)
   compose_ffmpeg.py  bruto + cut-list + motion-manifest [+ SRT] → Reel 1080x1920

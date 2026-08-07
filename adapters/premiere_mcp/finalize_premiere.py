@@ -228,7 +228,8 @@ def main() -> None:
         rate = infer_speed_rate(
             transcript, style.get("speed", {}).get("rate", 1.2))
         p_cut, p_tr = write_cut_artifacts(
-            transcript, segments_from_clips(clips), "timeline", slug, rate)
+            transcript, segments_from_clips(clips), "timeline", slug, rate,
+            words=words)
         print(f"artefatos do corte atualizados: {p_cut.name}, {p_tr.name}")
 
         feito = []

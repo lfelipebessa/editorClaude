@@ -91,20 +91,23 @@ def remap_silences(silences: list[dict], table: list[dict]) -> list[dict]:
 
 def write_cut_artifacts(transcript: dict, segments: list[dict], origem: str,
                         slug: str, speed_rate: float,
-                        out_dir: Path = Path("output")) -> tuple[Path, Path]:
+                        out_dir: Path = Path("output"),
+                        words: list[dict] | None = None) -> tuple[Path, Path]:
     """Grava cutlist_final_<slug>.json + transcript_cut_<slug>.json.
 
     origem: "timeline" (corte pós-edição humana) ou "cutlist" (automático) —
     os dois divergem depois do checkpoint; o campo diz qual verdade é esta.
+    words: lista opcional já corrigida (ex.: merge_corrected_text) — em tempo de FONTE.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     table = offset_table(segments)
     # score default 0.0 espelha a convenção de transcribe.py (w.get("score", 0.0)) —
     # cobre palavras de transcripts antigos gravados antes desse default existir.
-    words = [{**w, "score": w.get("score", 0.0)}
-             for s in transcript["segments"] for w in s.get("words", [])
-             if "start" in w]
-    source = {**transcript["source"], "speed_rate": speed_rate}
+    raw_words = words if words is not None else [
+        w for s in transcript["segments"] for w in s.get("words", [])
+        if "start" in w]
+    words = [{**w, "score": w.get("score", 0.0)} for w in raw_words]
+    source = {**transcript.get("source", {}), "speed_rate": speed_rate}
     cut_duration = table[-1]["cut_end"] if table else 0.0
 
     cutlist_final = {"version": 1, "origem": origem, "source": source,

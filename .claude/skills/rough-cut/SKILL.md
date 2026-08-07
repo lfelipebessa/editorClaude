@@ -108,8 +108,9 @@ Dado um vídeo bruto `<video>`:
    #    motion ainda não existem — V1 vazia -> Close Gap funciona)
    .venv/bin/python adapters/premiere_mcp/compose_premiere.py <video> output/cutlist_<slug>.json --sequence-name reel_<slug> --somente-corte
    # 2. CHECKPOINT: usuário edita o corte e avisa quando fechou
-   #    Ao fechar o corte, PERSISTIR a fonte de verdade (única etapa que exige
-   #    Premiere aberto — depois disso re-render, diff e handoff funcionam sem ele):
+   #    Ao fechar o corte, PERSISTIR a fonte de verdade (o Premiere ainda está
+   #    aberto aqui; com os artefatos, re-render ffmpeg e diff de copy — e
+   #    qualquer consumidor futuro do corte — funcionam sem Premiere):
    .venv/bin/python adapters/premiere_mcp/export_cut.py output/transcript_<slug>.json --sequence-name reel_<slug>
    # 3. HANDOFF (corte aprovado -> MotionSkills): lê o corte FINAL da
    #    timeline, mescla com a copy do vault (grafia + TELA:) e gera

@@ -108,6 +108,9 @@ Dado um vídeo bruto `<video>`:
    #    motion ainda não existem — V1 vazia -> Close Gap funciona)
    .venv/bin/python adapters/premiere_mcp/compose_premiere.py <video> output/cutlist_<slug>.json --sequence-name reel_<slug> --somente-corte
    # 2. CHECKPOINT: usuário edita o corte e avisa quando fechou
+   #    Ao fechar o corte, PERSISTIR a fonte de verdade (única etapa que exige
+   #    Premiere aberto — depois disso re-render, diff e handoff funcionam sem ele):
+   .venv/bin/python adapters/premiere_mcp/export_cut.py output/transcript_<slug>.json --sequence-name reel_<slug>
    # 3. HANDOFF (corte aprovado -> MotionSkills): lê o corte FINAL da
    #    timeline, mescla com a copy do vault (grafia + TELA:) e gera
    #    output/handoff_<slug>.md
@@ -138,6 +141,11 @@ Dado um vídeo bruto `<video>`:
    .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa motions
    # 7. CHECKPOINT: usuário revisa o dinamismo; COR entra aqui, manual:
    #    Paste Attributes da referência em V2 (NUNCA marcar Motion/Crop)
+   #    ANTES DE PUBLICAR, a TRAVA de copy (checkpoint 2):
+   .venv/bin/python src/diff_copy.py <copy-aprovada.md> output/transcript_cut_<slug>.json
+   #    Divergência em CTA ou fosso = corrigir antes de publicar (regravar o
+   #    trecho ou aceitar por escrito). Foco: CTA, fosso, keyword. A copy
+   #    aprovada é a nota de conteúdo do vault (status: entregue-ao-pipeline).
    # 8. ETAPA LEGENDAS (sempre a última — lê o áudio ATUAL da timeline):
    .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa legendas --corrected-srt output/captions_<slug>.srt
    # 9. QA DA LEGENDA (sempre rodar após a etapa legendas): re-transcreve o
@@ -155,6 +163,11 @@ Dado um vídeo bruto `<video>`:
    #    real do corte (texto corrido dos blocos do handoff), o brief e os
    #    caminhos dos artefatos locais. Métrica NÃO entra (é assunto do
    #    EstudoConteudo/Supabase — regra do template).
+   # 11. PÓS-PUBLICAÇÃO (destilação pro vault): a conclusão do diff vira seção
+   #    datada apendada em "~/development/2Cerebro/03 Recursos/Aprendizados de
+   #    Conteúdo/O vídeo gravado não é o roteiro aprovado.md" (conclusão
+   #    qualitativa em português; MÉTRICA NUNCA) + 1 linha no topo de
+   #    "~/development/2Cerebro/99 Contexto/log.md".
    ```
    `--etapa tudo` (default do finalize) sobe motions+música+legendas de uma
    vez — usar só quando o usuário dispensar os checkpoints intermediários.

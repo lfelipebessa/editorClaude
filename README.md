@@ -114,8 +114,8 @@ vídeo bruto ──▶ src/transcribe.py ──▶ transcript.json (timestamps p
                                           │
               ┌───────────────────────────┴──────────────────────┐
               ▼                                                  ▼
-  adapters/render_ffmpeg.py                        adapters/premiere_mcp/ (esqueleto)
-  rough_cut.mp4 (funciona hoje)                    timeline no Premiere (bloqueado)
+  adapters/render_ffmpeg.py                        adapters/premiere_mcp/ (funcional)
+  rough_cut.mp4 (funciona hoje)                    timeline no Premiere (E2E validado 2026-07-30)
 ```
 
 O núcleo (`src/`) é agnóstico de editor: produz apenas o transcript e a cut-list.
@@ -227,7 +227,7 @@ adapters/       saídas
                      (motion MotionSkills em cima, câmera 9:8 gradada embaixo,
                      legendas na divisa; ver src/compose.py para o resolvedor
                      de âncoras textuais e o SRT editável)
-  premiere_mcp/      esqueleto do adaptador Premiere Pro MCP (não instalado)
+  premiere_mcp/      adaptador Premiere Pro MCP — FUNCIONAL, E2E validado 2026-07-30 (setup: adapters/premiere_mcp/README.md)
 tests/          testes
 ```
 

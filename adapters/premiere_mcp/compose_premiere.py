@@ -36,12 +36,17 @@ from render_ffmpeg import (FFMPEG, FFPROBE, load_style,  # noqa: E402
                            resolve_music_file)
 
 
-# Enquadramento padrão do canal (aprovado pelo usuário em 2026-07-30, validado
-# ao vivo na reel_plugin_admin): zoom sobre o fill da metade de baixo com a
-# cabeça quase encostando na divisa do motion. Assume o setup fixo do estúdio
-# (câmera parada, rosto na região central) — conferir por frame exportado.
-CAMERA_ZOOM = 1.305
-CAMERA_POSITION = [0.58, 0.6825]
+# Enquadramento padrão do canal (selado pelo usuário em 2026-08-07, herdando o
+# ajuste manual do reel_0508 publicado — antes: zoom 1.305/Scale 58 em 4K,
+# aprovado 2026-07-30): zoom sobre o fill da metade de baixo com a cabeça quase
+# encostando na divisa do motion. Assume o setup fixo do estúdio (câmera
+# parada, rosto na região central) — conferir por frame exportado.
+CAMERA_ZOOM = 1.4175
+CAMERA_POSITION = [0.52, 0.6973]
+# Fonte estreita (bruto já vertical, de celular): o zoom absoluto de estúdio
+# não transfere — selfie já vem fechada no rosto. O que transfere é o aperto
+# criativo do 0508 sobre o enquadramento antigo (63/58), por cima do width-fill.
+CAMERA_TIGHTEN = round(1.4175 / 1.305, 4)
 
 
 def camera_transform(src_w: int, src_h: int, seq_w: int,
@@ -50,13 +55,13 @@ def camera_transform(src_w: int, src_h: int, seq_w: int,
     baixo. O zoom faz o clipe subir acima da divisa (seq_h/2) para o rosto
     subir junto; o Crop Top corta o excesso e devolve a divisa exata — o corte
     vira transparência, então o motion de V1 continua aparecendo. Para fonte
-    4K 16:9 em 1080x1920: Scale 58, Position [0.58, 0.6825], Crop Top 22.03.
+    4K 16:9 em 1080x1920: Scale 63, Position [0.52, 0.6973], Crop Top 22.16.
     Fonte estreita (bruto já vertical, ex. 720x1280): o height-fill deixaria
-    barras laterais — prevalece o width-fill, com X centralizado porque a
-    largura fecha exata com a sequência (offset viraria barra de um lado)."""
+    barras laterais — prevalece o width-fill vezes CAMERA_TIGHTEN, com X
+    centralizado (selfie já centraliza o rosto; offset viraria barra)."""
     scale = round(seq_h / 2 / src_h * 100 * CAMERA_ZOOM, 2)
     position = list(CAMERA_POSITION)
-    width_fill = round(seq_w / src_w * 100, 2)
+    width_fill = round(seq_w / src_w * 100 * CAMERA_TIGHTEN, 2)
     if width_fill > scale:
         scale = width_fill
         position[0] = 0.5

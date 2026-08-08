@@ -130,9 +130,11 @@ def apply_punch_in(client: MCPStdioClient, seq_id: str, punch_cfg: dict,
         props = client.call_tool("get_clip_properties", {"clipId": node_id})
         base = find_key(props, "scale") or 100
         in_pt = clip.get("inPoint", 0)
-        # pico absoluto (scale_abs) vale para qualquer base — câmera 58 e
-        # motion 100 abrem no MESMO Scale; sem scale_abs, multiplicador zoom
-        pico = scale_abs if scale_abs else base * zoom
+        # pico absoluto (scale_abs) alinha câmera e motion no MESMO Scale de
+        # abertura — mas com base MAIOR que o absoluto (câmera de celular a
+        # 162.93) o delta ficava negativo e o punch era pulado em silêncio;
+        # o max() garante zoom real preservando o comportamento 4K (58 -> 120)
+        pico = max(scale_abs, base * zoom) if scale_abs else base * zoom
         delta = pico - base
         if delta <= 0:
             continue
@@ -177,6 +179,12 @@ def main() -> None:
     parser.add_argument("--no-music", action="store_true")
     parser.add_argument("--etapa", choices=["tudo", "motions", "legendas"],
                         default="tudo")
+    parser.add_argument("--scene-starts", choices=["detect", "manifest"],
+                        default="detect",
+                        help="'manifest' confia nos starts do manifest em vez de "
+                             "re-detectar por texto — usar quando a timeline não "
+                             "mudou desde o prepare_compose e a detecção erra "
+                             "(resumo do brief não é fala verbatim)")
     parser.add_argument("--timeout", type=float, default=120.0)
     args = parser.parse_args()
     do_motions = args.etapa in ("tudo", "motions")
@@ -234,7 +242,12 @@ def main() -> None:
 
         feito = []
         if do_motions:
-            starts = find_scene_starts(scenes, out_words)
+            if args.scene_starts == "manifest" and \
+                    all("start" in sc for sc in scenes):
+                starts = [sc["start"] for sc in scenes]
+                print("starts das cenas: manifest (detecção desligada)")
+            else:
+                starts = find_scene_starts(scenes, out_words)
             for sc, st in zip(scenes, starts):
                 sc["start"] = st
 

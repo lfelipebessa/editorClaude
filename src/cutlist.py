@@ -23,6 +23,11 @@ PAD_AFTER = 0.20        # respiro mantido depois da fala
 MIN_SEGMENT = 0.2       # duração mínima de um segmento após trims
 FALSE_START_MAX_WORDS = 4
 REPETITION_SIMILARITY = 0.8
+RETAKE_BREATH = 0.35     # respiro que separa duas tomadas
+RETAKE_MIN_TOKENS = 4    # tomada menor que isso não é avaliada (evita falso positivo)
+RETAKE_CONTAINMENT = 0.75  # fração dos tokens da tomada menor que reaparece na seguinte
+RETAKE_WINDOW = 30.0     # janela em que duas tomadas contam como retake
+RETAKE_LOOKAHEAD = 3     # tomadas à frente comparadas (fragmento curto no meio)
 FILLERS = {"uh", "um", "hum", "hmm", "eh", "ehh", "ã", "ãh", "hã", "éé", "ééé"}
 
 DEFAULTS = {
@@ -151,6 +156,70 @@ def remove_repetitions(words: list[dict]) -> None:
                 drop(words, a, "repetition")
                 changed = True
                 break
+
+
+def split_takes(words: list[dict], gap: float = RETAKE_BREATH) -> list[list[int]]:
+    """Divide as palavras mantidas em tomadas, separadas por respiro >= gap."""
+    kept = [i for i, w in enumerate(words) if w["keep"]]
+    takes, cur = [], []
+    for i in kept:
+        if cur and words[i]["start"] - words[cur[-1]]["end"] >= gap:
+            takes.append(cur)
+            cur = []
+        cur.append(i)
+    if cur:
+        takes.append(cur)
+    return takes
+
+
+def remove_retakes(words: list[dict], window: float = RETAKE_WINDOW) -> None:
+    """Tomada refeita (retake reformulado): mantém a última tentativa.
+
+    O detector por similaridade de CARACTERES entre frases só pega repetição
+    quase literal. Na prática a tomada é reformulada ("ela permite que você
+    construa" -> "...reconstrua uma imagem ou um objeto 3D" -> "...um objeto ou
+    uma imagem que você tenha como um modelo 3D"): nenhuma passa de 0.70 de
+    ratio, e comparar a ABERTURA exata também falha porque o transcript perde
+    palavras (o take vem sem o "Que" inicial).
+
+    O que se sustenta é CONTAINMENT de tokens entre tomadas consecutivas: se
+    quase todo token da tomada menor reaparece na seguinte, a primeira era
+    ensaio. Consecutivas + janela de tempo evitam casar fala legítima distante
+    que por acaso repita palavras.
+    """
+    changed = True
+    while changed:
+        changed = False
+        takes = split_takes(words)
+        # olhar até RETAKE_LOOKAHEAD tomadas à frente: entre duas tentativas
+        # costuma sobrar um fragmento curto ("há", "a") que, sozinho, não passa
+        # de RETAKE_MIN_TOKENS e escondia o par da comparação
+        pares = [(takes[i], takes[j])
+                 for i in range(len(takes))
+                 for j in range(i + 1, min(i + 1 + RETAKE_LOOKAHEAD, len(takes)))]
+        for a, b in pares:
+            ta = {words[i]["norm"] for i in a if words[i]["norm"]}
+            tb = {words[i]["norm"] for i in b if words[i]["norm"]}
+            if min(len(ta), len(tb)) < RETAKE_MIN_TOKENS:
+                continue
+            if words[b[0]]["start"] - words[a[0]]["start"] > window:
+                continue
+            menor, maior = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+            if len(menor & maior) / len(menor) < RETAKE_CONTAINMENT:
+                continue
+            # a tomada pode trazer fala BOA emendada antes do ensaio ("focado em
+            # acabar com o AI slop. Que são aqueles designs genéricos?"): remove
+            # só de onde o trecho repetido começa, nunca a tomada inteira
+            seq_a = [words[i]["norm"] for i in a]
+            seq_b = [words[i]["norm"] for i in b]
+            bloco = max(difflib.SequenceMatcher(None, seq_a, seq_b, autojunk=False)
+                        .get_matching_blocks(), key=lambda m: m.size)
+            corte = bloco.a if bloco.size >= RETAKE_MIN_TOKENS else 0
+            if len(a) - corte < RETAKE_MIN_TOKENS:
+                continue
+            drop(words, a[corte:], "retake")
+            changed = True
+            break
 
 
 def subtract_silences(segments: list[dict], silences: list[dict],
@@ -326,6 +395,7 @@ def generate_cutlist(transcript: dict, settings: dict | None = None) -> dict:
     remove_fillers(words)
     remove_false_starts(words)
     remove_repetitions(words)
+    remove_retakes(words)
 
     segments, removed = build_intervals(words, duration, transcript.get("silences", []), cfg)
     kept_duration = sum(s["end"] - s["start"] for s in segments)

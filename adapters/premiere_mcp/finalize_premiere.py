@@ -227,7 +227,13 @@ def main() -> None:
             raise MCPError(f"sequência {args.sequence_name!r} não encontrada")
         client.call_tool("set_active_sequence", {"sequenceId": str(seq_id)})
 
-        clips = read_camera_clips(client, args.camera_track, args.media_name)
+        media_name = args.media_name
+        if media_name == "dji_":
+            fonte = Path(str(transcript.get("source", ""))).stem
+            if fonte and "dji" not in fonte:
+                media_name = fonte[:12]
+                print(f"media-name inferido do transcript: {media_name!r}")
+        clips = read_camera_clips(client, args.camera_track, media_name)
         total = round(max(c["end"] for c in clips), 3)
         print(f"corte final lido: {len(clips)} clipes, conteúdo até {total}s")
 
@@ -337,6 +343,30 @@ def main() -> None:
                              {"sequenceId": str(seq_id), "projectItemId": srt_id})
             print(f"caption track criada ({len(chunks)} legendas, SRT: {out_srt})")
             feito.append(f"{len(chunks)} legendas")
+
+            # cobertura: palavra falada que não caiu em nenhuma legenda é fala
+            # MUDA no vídeo final e a revisão visual não pega (o que está na
+            # tela está certo). Aconteceu no reel_0708 com o CTA inteiro.
+            buracos, atual = [], []
+            for w in out_words:
+                if any(c["start"] - 0.12 <= w["start"] <= c["end"] + 0.12
+                       for c in chunks):
+                    if atual:
+                        buracos.append(atual)
+                        atual = []
+                    continue
+                atual.append(w)
+            if atual:
+                buracos.append(atual)
+            graves = [g for g in buracos if len(g) >= 3]
+            if graves:
+                print(f"  ATENÇÃO: {len(graves)} trecho(s) de fala sem legenda "
+                      f"— consertar antes de publicar:")
+                for g in graves:
+                    print(f"    {g[0]['start']:.2f}s: "
+                          f"{' '.join(w['word'] for w in g)}")
+            else:
+                print("  cobertura ok: toda palavra falada tem legenda")
 
         client.call_tool("save_project", {})
         print(f"ETAPA {args.etapa.upper()}: {' + '.join(feito)} sobre o corte "

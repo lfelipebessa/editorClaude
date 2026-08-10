@@ -28,6 +28,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fit_camera import fit as fit_camera
 from render_premiere import (BRIDGE_TEMP_DIR, SERVER_ENTRY, MCPError,
                              MCPStdioClient, build_batch, find_key)
 
@@ -320,7 +321,8 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
             sequence_name: str, timeout: float,
             music_file: Path | None = None,
             music_cfg: dict | None = None,
-            somente_corte: bool = False) -> None:
+            somente_corte: bool = False,
+            ajustar_por_clipe: bool = True) -> None:
     segments = cutlist["segments"]
     total = round(sum(s["end"] - s["start"] for s in segments), 3)
     scenes = manifest["scenes"]
@@ -433,6 +435,18 @@ def compose(video: Path, cutlist: dict, manifest: dict, srt: Path | None,
                 raise MCPError(f"Crop aplicado em {cropped.get('applied')} de "
                                f"{len(cam_clips)} clipes")
 
+        # ajuste fino POR CLIPE: o transform acima é o padrão do canal, mas com
+        # a câmera na mão a cabeça sobe e desce ao longo da gravação e um único
+        # Position Y erra em metade dos clipes (3 rodadas de retrabalho no
+        # reel_0708). Mede a cabeça em cada clipe e resolve individualmente.
+        if ajustar_por_clipe:
+            try:
+                fit_camera(video, sequence_name, track_index=1,
+                           media_name=video.stem[:12], client=client)
+            except (MCPError, subprocess.CalledProcessError, OSError) as e:
+                print(f"  AVISO: ajuste por clipe falhou ({e}) — "
+                      f"transform global mantido; conferir por frame exportado")
+
         if srt_id:
             print("criando caption track do SRT...")
             client.call_tool("create_caption_track",
@@ -472,6 +486,9 @@ def main() -> None:
                         help="música da biblioteca assets/music (nome sem "
                              "extensão) ou caminho; default = a do style")
     parser.add_argument("--no-music", action="store_true")
+    parser.add_argument("--sem-ajuste-por-clipe", action="store_true",
+                        help="não medir a cabeça clipe a clipe; usa só o "
+                             "transform global do canal (câmera travada em tripé)")
     parser.add_argument("--somente-corte", action="store_true",
                         help="etapa 1 do fluxo do canal: só câmera + voz; "
                              "motions/legenda/música sobem depois via "
@@ -500,7 +517,8 @@ def main() -> None:
         music_file = resolve_music_file(music_cfg, args.music)
 
     compose(args.video, cutlist, manifest, args.srt, args.sequence_name,
-            args.timeout, music_file, music_cfg, args.somente_corte)
+            args.timeout, music_file, music_cfg, args.somente_corte,
+            not args.sem_ajuste_por_clipe)
 
 
 if __name__ == "__main__":

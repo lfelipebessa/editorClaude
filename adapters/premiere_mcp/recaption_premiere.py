@@ -75,9 +75,9 @@ def main() -> None:
     transcript = json.loads(args.transcript.read_text())
     words = [w for s in transcript["segments"] for w in s.get("words", [])
              if "start" in w]
+    corrected = None
     if args.corrected_srt and args.corrected_srt.exists():
         corrected = parse_srt(args.corrected_srt.read_text())
-        words = merge_corrected_text(words, corrected)
         print(f"texto corrigido preservado de {args.corrected_srt.name}")
 
     out_srt = args.out_srt or Path(
@@ -100,6 +100,14 @@ def main() -> None:
         out_words = remap_words_by_clips(words, clips)
         if not out_words:
             raise MCPError("nenhuma palavra caiu nos clipes — media-name certo?")
+        if corrected:
+            # merge SÓ depois do remap — ver finalize_premiere.py (bruto com
+            # takes repetidos fazia o matcher casar com a tomada descartada)
+            antes = len(out_words)
+            out_words = merge_corrected_text(out_words, corrected)
+            if len(out_words) < antes * 0.9:
+                raise MCPError(f"merge do SRT corrigido derrubou {antes} -> "
+                               f"{len(out_words)} palavras — SRT é deste corte?")
 
         cap_cfg = load_style(args.style).get("captions", {})
         chunks = group_captions(out_words,

@@ -147,12 +147,17 @@ def apply_punch_in(client: MCPStdioClient, seq_id: str, punch_cfg: dict,
                 "paramName": "Scale", "time": round(in_pt + off, 4),
                 "value": round(val, 2)})
         if com_blur and blur > 0:
-            client.call_tool("apply_effect", {"clipId": node_id,
-                                              "effectName": "Gaussian Blur"})
+            # Premiere 26 renomeou o Gaussian Blur clássico para "(Legacy)" e o
+            # "Gaussian Blur" novo (GPU) tem params diferentes E nasce com
+            # Amount 20 constante — aplicá-lo deixava o clipe borrado fixo e o
+            # add_keyframe falhava silencioso (validado no reel_0708)
+            client.call_tool("apply_effect", {
+                "clipId": node_id, "effectName": "Gaussian Blur (Legacy)"})
             for off, val in ((0.0, blur), (blur_dur, 0)):
                 client.call_tool("add_keyframe", {
-                    "clipId": node_id, "componentName": "Gaussian Blur",
-                    "paramName": "Amount", "time": round(in_pt + off, 4),
+                    "clipId": node_id,
+                    "componentName": "Gaussian Blur (Legacy)",
+                    "paramName": "Blurriness", "time": round(in_pt + off, 4),
                     "value": val})
 
 
@@ -205,9 +210,9 @@ def main() -> None:
 
     words = [w for s in transcript["segments"] for w in s.get("words", [])
              if "start" in w]
+    corrected = None
     if args.corrected_srt and args.corrected_srt.exists():
-        words = merge_corrected_text(words,
-                                     parse_srt(args.corrected_srt.read_text()))
+        corrected = parse_srt(args.corrected_srt.read_text())
         print(f"texto corrigido preservado de {args.corrected_srt.name}")
 
     client = MCPStdioClient(["node", str(SERVER_ENTRY)],
@@ -229,6 +234,17 @@ def main() -> None:
         out_words = remap_words_by_clips(words, clips)
         if not out_words:
             raise MCPError("nenhuma palavra caiu nos clipes — media-name certo?")
+        if corrected:
+            # merge DEPOIS do remap: o SRT corrigido cobre só o corte, então
+            # alinhar contra o transcript do BRUTO fazia o SequenceMatcher
+            # casar o texto com um take descartado quando o bruto tem tomadas
+            # repetidas — as palavras do take usado ficavam sem texto e a
+            # legenda abria buracos (reel_0708: 1.3s e 2.0s de fala sem legenda)
+            antes = len(out_words)
+            out_words = merge_corrected_text(out_words, corrected)
+            if len(out_words) < antes * 0.9:
+                raise MCPError(f"merge do SRT corrigido derrubou {antes} -> "
+                               f"{len(out_words)} palavras — SRT é deste corte?")
 
         # o corte ATUAL da timeline vira artefato — mantém transcript_cut fresco
         # a cada etapa (o usuário pode ter retocado o corte entre etapas)

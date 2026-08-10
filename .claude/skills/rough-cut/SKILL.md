@@ -5,6 +5,27 @@ description: Fluxo padrão para gerar rough cut de um vídeo bruto do canal — 
 
 # Rough cut — fluxo padrão do canal
 
+## Regra zero: velocidade (feedback do usuário, 2026-08-10)
+
+O projeto existe para editar MAIS RÁPIDO que na mão no CapCut. No reel_0708 o
+resultado foi o contrário — mais tempo em ajuste e ping-pong do que uma edição
+manual — e o usuário cobrou. Vale mais do que qualquer perfeição de fluxo:
+
+1. **Entregue validado, não para validar.** Antes de chamar o usuário, rode as
+   checagens que existem (frame exportado do enquadramento, cobertura de
+   legenda, avisos do finalize) e conserte o que aparecer. Cada "achei um
+   problema" dele é uma rodada que custa mais que a checagem.
+2. **DOIS checkpoints, não seis.** (a) corte, (b) dinamismo + cor. Legenda e
+   enquadramento não são checkpoint: são automáticos e verificáveis por script.
+3. **Não refine o que já está bom.** Conteúdo preservado > último 10% de
+   automação. Se uma checagem já reduziu o trabalho manual de 5 para 1, siga.
+4. **Motion sob medida é o item mais caro do fluxo** (horas de geração, cena a
+   cena, com quedas de API). Reaproveite as cenas do estilo já aprovado
+   (`5-skills-design` = mesa de papel) trocando texto/dados, e proponha menos
+   cenas. Autorar 8 cenas do zero só quando o usuário pedir explicitamente.
+5. **Nunca edite role do Maestri com agente trabalhando** — reinicia a sessão
+   dele na hora. Regra urgente vai no prompt; role só depois.
+
 **O preset `seco` é o padrão do canal.** Nunca invente parâmetros de corte, nunca
 ajuste valores inline. Toda mudança de estilo (trims, gaps, plataformas) é feita
 editando `styles/seco.json` — fonte única de verdade, versionada no git.
@@ -105,9 +126,16 @@ Dado um vídeo bruto `<video>`:
 
    ```bash
    # 1. ETAPA CORTE: timeline só com câmera + voz, SEM manifest (clips de
-   #    motion ainda não existem — V1 vazia -> Close Gap funciona)
+   #    motion ainda não existem — V1 vazia -> Close Gap funciona).
+   #    Já sai com o enquadramento medido POR CLIPE (fit_camera): com câmera
+   #    na mão a cabeça sobe e desce, e um Position Y único erra em metade dos
+   #    clipes. Em tripé, --sem-ajuste-por-clipe pula a medição.
    .venv/bin/python adapters/premiere_mcp/compose_premiere.py <video> output/cutlist_<slug>.json --sequence-name reel_<slug> --somente-corte
-   # 2. CHECKPOINT: usuário edita o corte e avisa quando fechou
+   # 2. CHECKPOINT 1 (dos dois que existem): usuário edita o corte e avisa.
+   #    ANTES de chamá-lo: exportar 2-3 frames da sequência e conferir a cabeça
+   #    (~20-35px da divisa). Enquadramento torto descoberto por ELE = rodada
+   #    perdida. O corte automático já tira retakes reformulados (containment
+   #    de tokens); sobra pouca coisa para a mão.
    #    Ao fechar o corte, PERSISTIR a fonte de verdade (o Premiere ainda está
    #    aberto aqui; com os artefatos, re-render ffmpeg e diff de copy — e
    #    qualquer consumidor futuro do corte — funcionam sem Premiere):
@@ -140,8 +168,11 @@ Dado um vídeo bruto `<video>`:
    #    conteúdo — pedido do usuário 2026-08-06: punch em TODO corte cansa,
    #    3 pontos distribuídos dão o dinamismo certo
    .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa motions
-   # 7. CHECKPOINT: usuário revisa o dinamismo; COR entra aqui, manual:
-   #    Paste Attributes da referência em V2 (NUNCA marcar Motion/Crop)
+   # 7. CHECKPOINT 2 (o último): usuário revisa o dinamismo; COR entra aqui:
+   #    Paste Attributes da referência em V2 (NUNCA marcar Motion/Crop).
+   #    O preview do Premiere MENTE sobre punch-in e blur (parecem parados e
+   #    saem certos no render) — julgar por frame exportado ou pelo arquivo
+   #    final, nunca pelo player. Não abrir rodada de ajuste por causa dele.
    #    ANTES DE PUBLICAR, a TRAVA de copy (checkpoint 2):
    .venv/bin/python src/diff_copy.py <copy-aprovada.md> output/transcript_cut_<slug>.json
    #    Divergência em CTA ou fosso = corrigir antes de publicar (regravar o
@@ -149,6 +180,13 @@ Dado um vídeo bruto `<video>`:
    #    aprovada é a nota de conteúdo do vault (status: entregue-ao-pipeline).
    # 8. ETAPA LEGENDAS (sempre a última — lê o áudio ATUAL da timeline):
    .venv/bin/python adapters/premiere_mcp/finalize_premiere.py output/transcript_<slug>.json output/motion_manifest_<slug>.json --sequence-name reel_<slug> --etapa legendas --corrected-srt output/captions_<slug>.srt
+   #    A etapa legendas já avisa se alguma palavra falada ficou SEM legenda
+   #    (fala muda é invisível na revisão visual). Aviso = consertar antes de
+   #    seguir: quase sempre é timestamp deslocado do WhisperX — realinhar o
+   #    trecho com o ALIGNER sobre o wav do clipe e refazer com recaption.
+   #    Grafia de produto (Playwright, Taste Skill, Claude): corrigir palavra a
+   #    palavra NO TRANSCRIPT por timestamp e rodar sem --corrected-srt — o
+   #    merge de SRT é a etapa mais frágil do fluxo.
    # 9. QA DA LEGENDA (sempre rodar após a etapa legendas): re-transcreve o
    #    áudio do corte final e diffa com a legenda — pega frase que o ASR
    #    ENGOLIU no bruto (ex.: "Terminei a call" virou a palavra falsa "Eu";

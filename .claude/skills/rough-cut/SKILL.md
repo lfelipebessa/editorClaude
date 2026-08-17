@@ -270,6 +270,67 @@ Dado um vídeo bruto `<video>`:
    Export > Effects > Lumetri Look/LUT > Select > browse até o .cube. Nunca
    aplicar na timeline junto com o export-LUT (dobraria a compensação).
 
+3d. **Corte de vídeo do YouTube para Reels (tela em cima, rosto embaixo)** —
+   fluxo separado, sem Premiere e sem motion: `adapters/reel_screencam.py` +
+   uma receita JSON por corte (`output/reel_<tema>_<slug>.json`). Aprovado pelo
+   usuário em 2026-08-16 ("ficou simplesmente perfeito"); é o padrão para
+   transformar 1 vídeo longo em vários cortes.
+
+   **Estrutura narrativa do corte (padrão selado, usar em TODOS):**
+   `gancho (o ponto alto/payoff puxado do FIM do vídeo) → problema → passos →
+   execução → payoff → CTA`. O gancho dá o gostinho do resultado antes de
+   qualquer explicação — é o que faz o corte segurar.
+
+   **ESCOLHA DOS TRECHOS (o passo caro) virou script em 2026-08-16.** O
+   `propose_cuts.py` NÃO chama API: ele monta o briefing (transcrição + regras
+   + schema) e QUEM RESPONDE É VOCÊ, o agente da sessão. Chamar a API daqui
+   seria pagar duas vezes pelo mesmo julgamento. `--api` só existe para quando
+   não há agente na sessão (cron, servidor, o frontend futuro).
+   ```bash
+   # 1. briefing no stdout -> responder com o JSON das propostas
+   .venv/bin/python src/propose_cuts.py output/transcript_<slug>.json -n 3
+   # 2. propostas -> receitas encostadas na palavra, com avisos
+   .venv/bin/python src/build_recipes.py output/propostas_<slug>.json \
+       output/transcript_<slug>.json --base output/reel_<algum>_<slug>.json \
+       --slug <slug>
+   ```
+   O `build_recipes` avisa de sobreposição entre segmentos, repetição de ideia
+   e duração fora do alvo — os três erros que o primeiro lote de cortes cometeu.
+   Aviso não é erro: ler e decidir. O que continua na mão é o crop por segmento
+   (folha de contato) e o QA final.
+
+   **Fontes: sempre os canais BRUTOS do bundle `.screenstudio`, nunca o export.**
+   O export tem a bolha da webcam colada no canto inferior direito e o zoom por
+   clique empurra o conteúdo para debaixo dela. Tela = `channel-1-display-*`
+   (3420x2214), rosto = `channel-3-webcam-*` (1920x1080). Só o ÁUDIO vem do
+   export — é o relógio contínuo, o mesmo do transcript.
+
+   **Sessões**: o Screen Studio abre uma sessão nova a cada pausa da gravação e
+   o export é a emenda delas. Somar durações erra por centenas de ms e quebra o
+   sincronismo labial — medir com `src/sync_screenstudio.py` (correlação de
+   envelope de áudio) e colar os offsets na receita.
+
+   Enquadramento (receita): `top_h: 960` (divisa no meio); crop de tela POR
+   SEGMENTO quando a cena muda de lugar na tela; crop de câmera com a cabeça a
+   ~25px da divisa (base medida: `{w:912,h:810,x:491,y:195}` para esta
+   gravação). `top_at` num segmento usa a tela de OUTRO instante como b-roll —
+   serve para o gancho, porque a fala que vende o resultado quase nunca
+   acontece com o resultado na tela.
+
+   ```bash
+   .venv/bin/python adapters/reel_screencam.py output/reel_<tema>_<slug>.json \
+       --contact-sheet /tmp/folha.jpg      # 1 frame por segmento: valida os DOIS enquadramentos
+   .venv/bin/python adapters/reel_screencam.py output/reel_<tema>_<slug>.json \
+       -o ~/Downloads/reel_<tema>_<slug>_vN.mp4
+   ```
+
+   **QA obrigatório (pegou erro real em 3 de 3 cortes):** re-transcrever o mp4
+   final e LER o texto. Pega palavra cortada na borda, frase repetida entre dois
+   segmentos, e fala de bastidor que o transcript da fonte engoliu dentro de uma
+   "palavra" longa (ex.: "computador." de 2.4s escondendo "deixa eu tirar a
+   câmera"). Quando o transcript da fonte mentir, mapear as palavras do QA de
+   volta para o tempo da fonte pela posição na timeline de saída.
+
 4. **Reportar** ao final, sempre:
    - duração original vs final;
    - número de segmentos mantidos e cortes por motivo (silence, stutter, false_start,

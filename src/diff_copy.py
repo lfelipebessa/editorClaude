@@ -20,8 +20,7 @@ import sys
 from difflib import SequenceMatcher
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from compose import normalize_text
+from core.transcript import normalize_text
 
 
 def tokenize(text: str) -> list[str]:

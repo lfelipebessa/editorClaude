@@ -1,249 +1,222 @@
 # EditorClaude
 
-Editor automático de vídeo por fases. Fase 1: **rough cut** — remove silêncios, gaguejos, falsos começos e redundâncias de um vídeo bruto, sem intervenção manual.
+Pipeline de edição do canal, operado por Claude Code. Scripts Python fazem o
+trabalho pesado (transcrever, decidir cortes, enquadrar, renderizar) e o Claude
+Code atua como operador: você abre o Claude Code na pasta e pede o que quer.
 
-## Começando do zero (guia para quem chegou agora)
+O repositório ensina o operador a trabalhar:
 
-### O que é isto, em 30 segundos
+- `.claude/skills/rough-cut/` — a receita que o Claude Code segue, com as regras
+  duras e o que nunca fazer. **É o documento mais importante do repo.**
+- `styles/seco.json` — o gosto do canal (agressividade do corte, loudness, cor,
+  música, legenda). Fonte única de verdade: mudou o gosto, muda aqui, nunca no
+  código.
+- `.mcp.json` — acesso direto ao Premiere Pro (opcional, ~280 ferramentas MCP).
 
-Este repositório é um pipeline de edição de vídeo operado por IA. A ideia central:
-scripts Python fazem o trabalho pesado (transcrever, decidir cortes, renderizar) e
-o **Claude Code** atua como operador — você abre o Claude Code na pasta do projeto,
-pede "edita esse vídeo", e ele executa o fluxo inteiro sozinho, porque o repositório
-já ensina a ele como trabalhar:
+## Os dois pipelines
 
-- `.claude/skills/rough-cut/` — a "receita" que o Claude Code segue ao editar um
-  vídeo (ordem dos passos, preset do canal, o que nunca fazer).
-- `.mcp.json` — dá ao Claude Code acesso direto ao Premiere Pro (opcional, ~280
-  ferramentas via MCP).
-- `styles/seco.json` — o estilo do canal (agressividade do corte, áudio, cor,
-  plataformas de saída). Fonte única de verdade: mudou o estilo, muda aqui.
+O repo faz **duas coisas diferentes**. Saber em qual você está resolve 90% da
+confusão:
 
-Você NÃO precisa do Premiere para usar o projeto — o caminho padrão renderiza
-mp4 direto com ffmpeg. O Premiere é uma saída alternativa para quem quer
-continuar a edição manualmente numa timeline.
-
-### O que você precisa ter instalado
-
-| Ferramenta | Para quê | Como instalar |
+| | **A — Reel do canal** | **B — Cortes de YouTube** |
 |---|---|---|
-| macOS + [Homebrew](https://brew.sh) | os caminhos do projeto assumem Mac | — |
-| ffmpeg | extração de áudio, render, loudness | `brew install ffmpeg` |
-| Python 3.11+ | roda o pipeline (testado com 3.11.8) | `brew install python@3.11` ou pyenv |
-| [Claude Code](https://claude.com/claude-code) | o operador do pipeline | `npm install -g @anthropic-ai/claude-code` |
-| Node.js 18+ | *(opcional)* só para o MCP do Premiere | `brew install node` |
-| Adobe Premiere Pro | *(opcional)* saída em timeline editável | Creative Cloud |
+| Entrada | vídeo bruto de câmera (DJI/celular) | vídeo longo já gravado (tela + webcam) |
+| Saída | 1 Reel com motion graphics, legendas e cor | N cortes verticais tela em cima, rosto embaixo |
+| Ferramenta | Premiere (timeline) ou ffmpeg (mp4) | ffmpeg direto |
+| Checkpoints | 2 (corte, depois dinamismo+cor) | 1 (folha de contato antes do render) |
+| Quando usar | vídeo gravado para virar Reel | reaproveitar um vídeo do YouTube nas redes |
 
-### Instalação
+Os dois compartilham o transcritor, o style e o núcleo (`core/`).
+
+## Instalação
 
 ```bash
 git clone https://github.com/lfelipebessa/editorClaude.git
 cd editorClaude
 
-# venv + dependências (WhisperX puxa PyTorch — a instalação demora alguns minutos)
 python3.11 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -r requirements.txt   # WhisperX puxa PyTorch: demora
+.venv/bin/pip install -e .                  # torna `core` importável
 
-# teste rápido: deve imprimir a ajuda do transcritor
-.venv/bin/python src/transcribe.py --help
+.venv/bin/python -m pytest tests/ -q        # 101 testes, ~3s, sem vídeo
 ```
 
-Na **primeira transcrição** o WhisperX baixa os modelos (~2–3 GB, uma vez só).
-Roda em CPU; num Apple Silicon um vídeo de ~10 min transcreve em poucos minutos.
+O `pip install -e .` é o que faz `from core import ...` funcionar de qualquer
+script — sem ele os adaptadores não encontram a biblioteca compartilhada.
 
-### Como usar com o SEU Claude Code
+Na **primeira transcrição** o WhisperX baixa ~2–3 GB de modelos, uma vez só.
+
+Requisitos: macOS + Homebrew, `ffmpeg` em `/opt/homebrew/bin/ffmpeg`,
+Python 3.11+. Opcionais: Node 18+ e Premiere Pro (só para o pipeline A em
+timeline).
+
+### Usando com o Claude Code
 
 ```bash
-cd editorClaude
-claude
+cd editorClaude && claude
 ```
 
-Na primeira vez o Claude Code pergunta se você confia no `.mcp.json` do projeto —
-aprove (ou recuse, se não for usar o Premiere; o resto funciona igual). Depois é
-conversa:
+Depois é conversa: *"edita esse vídeo: ~/Downloads/bruto.mp4"* ou *"gera 3
+cortes desse vídeo do YouTube"*. A skill assume e executa. Para mudar estilo de
+forma permanente, peça para ele editar `styles/seco.json`.
 
-> edita esse vídeo: ~/Downloads/video_bruto.mp4
+---
 
-A skill `rough-cut` assume e executa o fluxo do canal: acelera 1.2x → transcreve
-em pt → gera a cut-list com o preset `seco` → renderiza para `~/Downloads`, com
-áudio normalizado e cor aplicada. Você também pode pedir variações:
+## Pipeline A — Reel do canal
 
-> faz a versão vertical pra Reel
-> monta a timeline no Premiere em vez de renderizar mp4
-> deixa o corte menos agressivo
+```
+bruto ─▶ speedup 1.2x ─▶ transcribe ─▶ cutlist ─┬─▶ render_ffmpeg  → mp4
+                                                └─▶ compose_premiere → timeline
+                                                        │
+                            handoff → MotionSkills ─────┤
+                                                        ▼
+                                          finalize_premiere (motion, música,
+                                          punch-in, legendas) → Reel
+```
 
-Para mudanças de estilo permanentes, peça para ele editar `styles/seco.json` —
-nunca ajuste parâmetros inline (regra da skill).
+```bash
+.venv/bin/python src/speedup.py bruto.mp4                      # 1.2x, pitch preservado
+.venv/bin/python src/transcribe.py bruto_12x.mp4 -o output/transcript_<slug>.json --language pt
+.venv/bin/python src/cutlist.py output/transcript_<slug>.json --preset seco -o output/cutlist_<slug>.json
+.venv/bin/python adapters/render_ffmpeg.py bruto_12x.mp4 output/cutlist_<slug>.json -o ~/Downloads/rough_cut.mp4
+```
 
-Prefere rodar na mão, sem Claude? Todos os comandos estão na seção **Uso** abaixo.
+Passos de composição (timeline, handoff de motion, legendas, trava de copy):
+o fluxo completo com checkpoints está na skill `rough-cut`, seção 3b.
 
-### Setup opcional: Premiere Pro via MCP
+| Script | O que faz |
+|---|---|
+| `src/speedup.py` | acelera 1.2x antes de tudo (Instagram pede fala veloz) |
+| `src/transcribe.py` | vídeo → transcript com timestamps por palavra + silêncios |
+| `src/cutlist.py` | transcript → cut-list (silêncio, gaguejo, falso começo, retake) |
+| `src/prepare_compose.py` | resolve o manifest de motion + SRT do corte |
+| `src/prepare_motion_handoff.py` | corte aprovado → briefing para o MotionSkills |
+| `src/diff_copy.py` | trava de publicação: copy aprovada × fala real |
+| `src/cut_artifacts.py` | persiste o corte aprovado (re-renderizável sem Premiere) |
+| `adapters/render_ffmpeg.py` | cut-list → mp4 |
+| `adapters/compose_ffmpeg.py` | bruto + cut-list + motion → Reel 1080×1920 em um encode |
+| `adapters/premiere_mcp/` | mesma coisa em timeline editável (setup: README de lá) |
 
-O servidor MCP do Premiere vive em `vendor/Adobe_Premiere_Pro_MCP` e **não vem
-no clone** (é gitignored). Para habilitar:
+## Pipeline B — Cortes de YouTube
+
+```
+gravação Screen Studio ─▶ transcribe ─▶ propose_cuts ─▶ build_recipes ─▶ reel_screencam
+   (bundle .screenstudio)                (escolhe os      (encosta na      (tela em cima,
+                                          trechos)         palavra)         rosto embaixo)
+```
+
+```bash
+# offsets das sessões do bundle dentro do export (medidos, nunca chutados)
+.venv/bin/python src/sync_screenstudio.py <bundle>.screenstudio <export>.mp4 -o output/sync_<slug>.json
+
+.venv/bin/python src/transcribe.py <export>.mp4 -o output/transcript_<slug>.json --language pt
+
+# briefing de escolha dos trechos -> o AGENTE da sessão responde (não chama API)
+.venv/bin/python src/propose_cuts.py output/transcript_<slug>.json -n 3
+
+# propostas -> receitas, com avisos de sobreposição/repetição/duração
+.venv/bin/python src/build_recipes.py output/propostas_<slug>.json \
+    output/transcript_<slug>.json --base output/reel_<algum>_<slug>.json --slug <slug>
+
+# CONFERIR o enquadramento antes de gastar render
+.venv/bin/python adapters/reel_screencam.py output/reel_<tema>_<slug>.json --contact-sheet /tmp/folha.jpg
+.venv/bin/python adapters/reel_screencam.py output/reel_<tema>_<slug>.json -o ~/Downloads/reel_<tema>.mp4
+```
+
+Estrutura selada do corte: **gancho (o ponto alto puxado do FIM) → problema →
+passos → execução → payoff → CTA**. Detalhes e as armadilhas do bundle (sessões,
+bolha da webcam, VFR) na skill `rough-cut`, seção 3d.
+
+---
+
+## O núcleo (`core/`)
+
+Biblioteca compartilhada pelos dois pipelines. Antes morava dentro de
+`adapters/render_ffmpeg.py`, que é um CLI — por isso 25 arquivos carregavam
+`sys.path.insert` só para importá-la. Hoje é um pacote de verdade.
+
+| Módulo | Responsabilidade |
+|---|---|
+| `core.style` | lê `styles/*.json`, plataformas de saída, biblioteca de música |
+| `core.filters` | monta as cadeias de filtro (cor, áudio, música, acabamento, corte) — só string, não executa |
+| `core.media` | conversa com ffmpeg/ffprobe: sonda streams, mede loudness |
+| `core.transcript` | palavras, remapeamento para o tempo do corte, legendas, SRT |
+
+A separação entre `filters` (monta) e `media` (executa) é o que permite testar
+as cadeias sem tocar em vídeo nenhum.
+
+## Contrato: a cut-list (pipeline A)
+
+Todo adaptador de saída consome exatamente este formato e nada mais — nenhum
+adaptador lê o transcript diretamente.
+
+```json
+{
+  "version": 1,
+  "source": { "path": "/caminho/absoluto/video.mp4", "duration": 132.48 },
+  "segments": [
+    { "start": 1.84, "end": 7.02, "text": "fala do segmento", "reason": "speech" }
+  ],
+  "removed": [
+    { "start": 0.0, "end": 1.84, "reason": "silence", "text": "" }
+  ],
+  "stats": { "kept_duration": 98.7, "removed_duration": 33.78, "segment_count": 12 }
+}
+```
+
+- `version` — incrementa em toda mudança incompatível.
+- `segments` — trechos a MANTER, em ordem, não sobrepostos, já com o respiro
+  incluído. O adaptador não adiciona margem.
+- `removed` — auditoria. `reason` ∈ `silence` | `stutter` | `false_start` |
+  `repetition` | `filler`. Adaptadores ignoram.
+- `settings` e `stats` — informativos, ignorar.
+
+Um adaptador correto concatena os `segments` cortando `[start, end)` do original.
+Nada além disso.
+
+O transcript traz também `silences` (spans detectados por `silencedetect`): o
+aligner do WhisperX às vezes estica uma palavra por cima de uma pausa longa e o
+silêncio some dos timestamps, então o `cutlist.py` usa os silêncios como cortes
+obrigatórios, independentes do texto.
+
+## Estrutura
+
+```
+core/           biblioteca compartilhada (style, filtros, mídia, transcript)
+src/            passos de linha de comando dos dois pipelines
+adapters/       saídas: render_ffmpeg, compose_ffmpeg, reel_screencam
+  premiere_mcp/   saída em timeline do Premiere (setup no README de lá)
+styles/         o gosto do canal — seco.json é o padrão
+assets/         músicas e LUTs
+tests/          101 testes; rodam sem vídeo, exceto os que usam make_fixture.sh
+docs/           specs e planos das decisões grandes
+vendor/         MCP do Premiere (gitignored, clonar à parte)
+output/         artefatos de trabalho (gitignored)
+```
+
+## Testes
+
+```bash
+.venv/bin/python -m pytest tests/ -q          # tudo
+.venv/bin/python tests/test_cutlist.py        # ou cada arquivo direto
+tests/make_fixture.sh                         # gera o vídeo usado por alguns testes
+```
+
+**Regra ao escrever teste:** valor que vive em `styles/*.json` é calibragem e
+muda — o teste lê do style e checa a faixa ou o invariante. Valor que é
+constante de código (ex.: o enquadramento selado da câmera) é decisão travada —
+o teste fixa o número de propósito, para que mudá-lo seja explícito. Teste que
+fixa valor de style quebra a cada calibragem e acaba ignorado.
+
+## Setup opcional: Premiere Pro via MCP
+
+O servidor MCP não vem no clone (gitignored):
 
 ```bash
 git clone https://github.com/hetpatel-11/Adobe_Premiere_Pro_MCP vendor/Adobe_Premiere_Pro_MCP
 cd vendor/Adobe_Premiere_Pro_MCP && npm install && npm run build
 ```
 
-Ajuste o caminho absoluto em `.mcp.json` para a sua máquina e siga o setup único
-dentro do Premiere (instalar a extensão CEP e iniciar o painel MCP Bridge):
-passo a passo em [`adapters/premiere_mcp/README.md`](adapters/premiere_mcp/README.md),
-que também documenta todas as fragilidades conhecidas do bridge.
-
-### Verificando que está tudo funcionando
-
-Os testes são scripts standalone (sem pytest) — cada arquivo roda direto:
-
-```bash
-# heurísticas de corte, com transcript sintético (não precisa de vídeo nem Premiere)
-.venv/bin/python tests/test_cutlist.py
-
-# testes que precisam de vídeo usam um fixture gerado por ffmpeg:
-tests/make_fixture.sh
-```
-
-## Pipeline
-
-```
-vídeo bruto ──▶ src/transcribe.py ──▶ transcript.json (timestamps por palavra, WhisperX)
-                                          │
-                                          ▼
-                                    src/cutlist.py ──▶ cutlist.json (segmentos a manter)
-                                          │
-              ┌───────────────────────────┴──────────────────────┐
-              ▼                                                  ▼
-  adapters/render_ffmpeg.py                        adapters/premiere_mcp/ (funcional)
-  rough_cut.mp4 (funciona hoje)                    timeline no Premiere (E2E validado 2026-07-30)
-```
-
-O núcleo (`src/`) é agnóstico de editor: produz apenas o transcript e a cut-list.
-Os adaptadores (`adapters/`) consomem a cut-list e materializam o corte em um destino específico.
-
-O transcript JSON inclui, além dos segmentos com palavras, um campo `silences`
-(spans detectados no áudio via ffmpeg `silencedetect`). Ele existe porque o aligner
-do WhisperX às vezes estica uma palavra por cima de uma pausa longa, fazendo o
-silêncio sumir dos timestamps — o `cutlist.py` usa os `silences` como cortes
-obrigatórios, independentes do texto.
-
-## Uso
-
-```bash
-source .venv/bin/activate
-
-# 1. Transcrever (extrai áudio com ffmpeg + WhisperX word-level)
-python src/transcribe.py video.mp4 -o output/transcript.json
-
-# 2. Gerar cut-list
-python src/cutlist.py output/transcript.json -o output/cutlist.json
-
-# 2b. Corte agressivo estilo rede social (jump cut seco)
-python src/cutlist.py output/transcript.json --preset seco -o output/cutlist.json
-# ou ajuste fino: --trim-start 0.07 --trim-end 0.12 --max-word-gap 0.25
-#   trim-start/trim-end: segundos cortados DENTRO da fala nas bordas de cada segmento
-#   max-word-gap: pausa entre palavras acima da qual vira corte (default 0.8s)
-#
-# O trim de borda é adaptativo à duração do segmento E da palavra da borda:
-#   duração < trim_min_duration      -> trim zero (palavra curta isolada sai intacta)
-#   cada borda perde no máximo trim_max_fraction da duração do segmento
-#     e trim_max_word_fraction da duração da palavra daquela borda
-#   palavra da borda < min_word_protect -> trim zero naquela borda (nunca truncar palavra)
-#   palavra final curta/sigla ("CRM")   -> fim estende até o silêncio real detectado
-#     (aligner fecha siglas cedo demais), teto short_word_end_margin
-#   segmentos longos com palavras longas nas bordas -> trim_start/trim_end na íntegra
-#
-# Presets vivem em styles/<nome>.json (fonte única de verdade, versionada).
-# styles/seco.json também define as plataformas de saída (16:9 / 9:16).
-
-# 3b. Variante vertical 9:16 (Instagram/TikTok): crop central definido no style,
-#     ajuste o enquadramento com --crop-x-offset (px do vídeo fonte, + = direita)
-python adapters/render_ffmpeg.py video.mp4 output/cutlist.json --platform instagram -o output/rough_cut_vertical.mp4
-
-# Áudio: se o style tem a seção "audio", o render aplica automaticamente
-# loudnorm em duas passadas (medição + ganho linear) e hard limiter, com alvos
-# do style (seco: I=-14 LUFS, TP=-1.5 dBTP, LRA=7 — padrão de rede social para
-# fala). Desligar com --no-audio-norm.
-
-# 3. Renderizar rough cut
-python adapters/render_ffmpeg.py video.mp4 output/cutlist.json -o output/rough_cut.mp4
-```
-
-## Contrato: formato da cut-list (JSON)
-
-A cut-list é o contrato central do projeto. Todo adaptador de saída consome exatamente este formato e nada mais — nenhum adaptador lê o transcript diretamente.
-
-```json
-{
-  "version": 1,
-  "source": {
-    "path": "/caminho/absoluto/video.mp4",
-    "duration": 132.48
-  },
-  "segments": [
-    {
-      "start": 1.84,
-      "end": 7.02,
-      "text": "fala contida no segmento",
-      "reason": "speech"
-    }
-  ],
-  "removed": [
-    {
-      "start": 0.0,
-      "end": 1.84,
-      "reason": "silence",
-      "text": ""
-    }
-  ],
-  "stats": {
-    "kept_duration": 98.7,
-    "removed_duration": 33.78,
-    "segment_count": 12
-  }
-}
-```
-
-Regras do contrato:
-
-- **`version`** — inteiro; incrementa em toda mudança incompatível do formato.
-- **`settings`** — opcional, informativo: os parâmetros usados na geração (preset, trims, gaps). Adaptadores devem ignorar.
-- **`source.path`** — caminho absoluto do vídeo original; `source.duration` em segundos.
-- **`segments`** — trechos a MANTER, na ordem de saída. Tempos em segundos (float), relativos ao vídeo original. Segmentos são não sobrepostos, ordenados por `start`, e já incluem o padding de respiro — o adaptador não adiciona margens.
-- **`removed`** — trechos descartados, apenas para auditoria/debug. `reason` ∈ `silence` | `stutter` | `false_start` | `repetition` | `filler`. Adaptadores devem ignorar este campo.
-- **`stats`** — informativo, opcional.
-
-Um adaptador correto: concatena os `segments` na ordem dada, cortando o vídeo original em `[start, end)` de cada um. Nada além disso.
-
-## Estrutura
-
-```
-src/            núcleo agnóstico de editor
-  transcribe.py     vídeo → transcript.json (WhisperX, word-level)
-  cutlist.py        transcript.json → cutlist.json
-  cut_artifacts.py  persiste o corte aprovado (cutlist_final + transcript_cut)
-  diff_copy.py      trava do checkpoint 2: copy aprovada × fala real do corte
-adapters/       saídas
-  render_ffmpeg.py   cut-list → rough_cut.mp4 (ffmpeg)
-  compose_ffmpeg.py  bruto + cut-list + motion-manifest [+ SRT] → Reel 1080x1920
-                     (motion MotionSkills em cima, câmera 9:8 gradada embaixo,
-                     legendas na divisa; ver src/compose.py para o resolvedor
-                     de âncoras textuais e o SRT editável)
-  premiere_mcp/      adaptador Premiere Pro MCP — FUNCIONAL, E2E validado 2026-07-30 (setup: adapters/premiere_mcp/README.md)
-tests/          testes
-```
-
-## Requisitos
-
-- Python 3.11+ com venv em `.venv` (`python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`)
-- ffmpeg em `/opt/homebrew/bin/ffmpeg`
-- WhisperX (instalado no venv)
-
-## Fases futuras
-
-- Fase 2: presets de áudio (amplify + hard limiter), adjustment layers, grain, transições.
-- Fase 3: integração MotionSkills + variantes 16:9 (YouTube) e 9:16 (Instagram/TikTok).
-
-# Cor (Fase 2 bloco 2)
-
-Seção `color` do style: LUT opcional (`lut3d`, só para footage D-Log M 10-bit vinda do cartão SD — a LUT oficial já está em `assets/luts/dji_dlogm_to_rec709_v1.cube`; o export do app Mimo entrega sempre 8-bit Rec.709 e NÃO leva LUT) + grade via `curve_s` (curva S no filtro `curves`), `vibrance`, `exposure` e `eq`. Aplicada apenas a footage de câmera (`scope: camera`) — motion graphics nunca passam pela cadeia de cor. `--no-color` desliga. Previews lado a lado: ver `~/Downloads/color_preview/`.
+Ajuste o caminho absoluto em `.mcp.json` e siga o setup dentro do Premiere
+(extensão CEP + painel MCP Bridge): passo a passo e fragilidades conhecidas em
+[`adapters/premiere_mcp/README.md`](adapters/premiere_mcp/README.md).

@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "editorclaude"
+version = "0.1.0"
+description = "Pipeline de edição do canal: Reel do canal e cortes de YouTube"
+requires-python = ">=3.11"
+# Dependências continuam no requirements.txt — este arquivo existe só para o
+# `pip install -e .` que torna `core` importável de qualquer script, sem
+# sys.path.insert. Declarar deps aqui faria o pip mexer no torch/whisperx.
+
+[tool.setuptools]
+packages = ["core"]

@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "adapters"))
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from compose_ffmpeg import (build_camera_branch, build_caption_overlays,
                             build_mg_track)

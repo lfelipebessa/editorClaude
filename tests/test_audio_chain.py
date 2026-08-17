@@ -7,9 +7,8 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "adapters"))
 
-from render_ffmpeg import (build_audio_chain, build_music_chain, load_style,
+from core import (build_audio_chain, build_music_chain, load_style,
                            music_gain_db, parse_loudnorm_json,
                            resolve_music_file)
 
@@ -100,7 +99,11 @@ def test_style_seco_has_music():
     music = load_style("seco").get("music")
     assert music, "styles/seco.json sem seção music"
     assert music["default"] == "musicafundo3"
-    assert music["bed_lufs"] <= -30, "bed alto demais vira briga com a voz"
+    # Faixa calibrada a ouvido: -30 sumiu (2026-07-31), -25 brigou com a
+    # voz (2026-08-06). O teste guarda a faixa, não o valor do dia.
+    voz = load_style("seco")["audio"]["target_i"]
+    assert -32 <= music["bed_lufs"] <= -26, music["bed_lufs"]
+    assert music["bed_lufs"] <= voz - 10, "bed perto demais da voz"
     assert music["start_offset"] == 20, "canal pula a intro lenta da música"
 
 

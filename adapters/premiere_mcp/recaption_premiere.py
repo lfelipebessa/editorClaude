@@ -26,8 +26,7 @@ from compose_premiere import import_item
 from render_premiere import (BRIDGE_TEMP_DIR, SERVER_ENTRY, MCPError,
                              MCPStdioClient, load_style)
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
-from compose import (format_srt, group_captions, merge_corrected_text,
+from core.transcript import (format_srt, group_captions, merge_corrected_text,
                      parse_srt, remap_words_by_clips)
 
 

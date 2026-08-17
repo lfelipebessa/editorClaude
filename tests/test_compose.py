@@ -6,9 +6,8 @@ Rodar: .venv/bin/python tests/test_compose.py
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from compose import (find_scene_starts, format_srt, group_captions,
+from core.transcript import (find_scene_starts, format_srt, group_captions,
                      merge_corrected_text, normalize_text, parse_srt,
                      remap_words, remap_words_by_clips)
 
@@ -85,7 +84,7 @@ BRIEF_MD = '''
 
 
 def test_parse_brief_scenes():
-    from compose import parse_brief_scenes
+    from core.transcript import parse_brief_scenes
     scenes = parse_brief_scenes(BRIEF_MD)
     assert len(scenes) == 2, scenes
     assert scenes[0]["num"] == "01" and scenes[0]["loop"] is False
@@ -184,7 +183,7 @@ if __name__ == "__main__":
     main()
 
 # --- parse_brief_scenes lê a coluna Dur. (higiene 2026-08-05) ---
-from compose import parse_brief_scenes
+from core.transcript import parse_brief_scenes
 brief = """
 | # | Trecho (resumo) | Conceito visual | Skill | Dur. | Loop | Layout |
 |---|---|---|---|---|---|---|

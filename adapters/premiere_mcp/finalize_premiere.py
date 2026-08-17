@@ -39,10 +39,10 @@ from compose_premiere import (add_music, build_mg_clips, build_position_y_jsx,
 from render_premiere import (BRIDGE_TEMP_DIR, SERVER_ENTRY, MCPError,
                              MCPStdioClient, find_key, load_style)
 
-from render_ffmpeg import FFPROBE, resolve_music_file  # noqa: E402
+from core import FFPROBE, resolve_music_file  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
-from compose import (find_scene_starts, format_srt, group_captions,
+from core.transcript import (find_scene_starts, format_srt, group_captions,
                      merge_corrected_text, parse_srt, remap_words_by_clips)
 from cut_artifacts import (infer_speed_rate, segments_from_clips,
                            write_cut_artifacts)

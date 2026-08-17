@@ -16,12 +16,13 @@ from render_premiere import build_batch
 def test_camera_transform_4k_standard_framing():
     scale, pos, crop_top = camera_transform(src_w=3840, src_h=2160,
                                             seq_w=1080, seq_h=1920)
-    # enquadramento padrão (validado ao vivo 2026-07-30 na reel_plugin_admin):
-    # zoom 1.305x sobre o fill da metade (44.44 -> 58) com a cabeça quase
-    # encostando na divisa; crop top devolve a divisa exata em y=960
-    assert abs(scale - 58.0) < 0.01, scale
-    assert pos == [0.58, 0.6825], pos
-    assert abs(crop_top - 22.03) < 0.01, crop_top
+    # Enquadramento SELADO em 2026-08-07 (ajuste manual do reel_0508
+    # publicado; antes era 1.305x/Scale 58, de 2026-07-30). Estes números são
+    # constante de código, não style — o teste fixa de propósito, para que
+    # mudar o enquadramento seja uma decisão explícita e não um acidente.
+    assert abs(scale - 63.0) < 0.01, scale
+    assert pos == [0.52, 0.6973], pos
+    assert abs(crop_top - 22.16) < 0.01, crop_top
 
 
 def test_camera_transform_crop_restores_divide():

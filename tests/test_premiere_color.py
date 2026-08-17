@@ -6,10 +6,9 @@ Rodar: .venv/bin/python tests/test_premiere_color.py
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "adapters"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "adapters" / "premiere_mcp"))
 
-from render_ffmpeg import load_style
+from core import load_style
 from render_premiere import (build_copy_effects_jsx, build_lumetri_jsx,
                              lumetri_from_style, noise_from_style,
                              parse_tool_payload)

@@ -22,8 +22,7 @@ import threading
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(REPO_ROOT / "adapters"))
-from render_ffmpeg import load_style  # noqa: E402 — style é a fonte de verdade comum
+from core import load_style  # noqa: E402 — style é a fonte de verdade comum
 
 SERVER_ENTRY = REPO_ROOT / "vendor/Adobe_Premiere_Pro_MCP/dist/index.js"
 BRIDGE_TEMP_DIR = "/tmp/premiere-mcp-bridge"

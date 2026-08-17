@@ -41,9 +41,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from render_ffmpeg import (FFMPEG, FFPROBE, build_audio_chain,
+from core import (FFMPEG, FFPROBE, build_audio_chain,
                            build_music_chain, load_style, measure_loudness,
                            measure_music_loudness, resolve_music_file)
 

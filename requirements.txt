@@ -1,2 +1,3 @@
 whisperx
 anthropic
+pytest

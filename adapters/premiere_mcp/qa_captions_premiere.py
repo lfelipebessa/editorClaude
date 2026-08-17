@@ -29,8 +29,7 @@ from recaption_premiere import read_voice_clips
 from render_premiere import (BRIDGE_TEMP_DIR, SERVER_ENTRY, MCPError,
                              MCPStdioClient)
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
-from compose import normalize_text, parse_srt
+from core.transcript import normalize_text, parse_srt
 
 TRANSCRIBE = Path(__file__).resolve().parent.parent.parent / "src" / "transcribe.py"
 

@@ -14,8 +14,7 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from compose import word_in_range
+from core.transcript import word_in_range
 
 
 def infer_speed_rate(transcript: dict, rate_if_12x: float) -> float:

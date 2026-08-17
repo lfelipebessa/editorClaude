@@ -21,10 +21,8 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(_ROOT / "adapters"))  # render_ffmpeg (import indireto)
-sys.path.insert(0, str(_ROOT / "adapters" / "premiere_mcp"))
 
-from compose import remap_words, remap_words_by_clips
+from core.transcript import remap_words, remap_words_by_clips
 from motion_handoff import (anchor_telas, assign_words, build_blocks,
                             divergent_blocks, format_handoff,
                             merge_with_copy, parse_copy)

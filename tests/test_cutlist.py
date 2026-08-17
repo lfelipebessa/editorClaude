@@ -11,6 +11,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from cutlist import generate_cutlist, load_style
 
 
+# Pad de saída do style: todo fim de segmento respira depois da fala
+# (2026-08-04). Vem do style, não fixado aqui — calibragem de corte muda.
+PAD = load_style("seco")["cut"].get("pad_after", 0.0)
+
+
 def make_transcript(words, duration=None, silences=None):
     """words: lista de (texto, start, end)."""
     duration = duration or (words[-1][2] + 1.0)
@@ -178,8 +183,8 @@ def test_adaptive_trim_spares_short_word():
     t = make_transcript([("oi", 1.0, 1.5)])   # palavra única de 0.5s
     c = generate_cutlist(t, cut)
     seg = c["segments"][0]
-    assert seg["start"] == 1.0 and seg["end"] == 1.5, \
-        f"segmento de 0.5s não pode perder nada: {seg}"
+    assert seg["start"] == 1.0 and abs(seg["end"] - (1.5 + PAD)) < 0.001, \
+        f"segmento de 0.5s não pode perder fala (só ganha o pad de saída): {seg}"
 
 
 def test_adaptive_trim_full_on_long_segment():
@@ -189,18 +194,31 @@ def test_adaptive_trim_full_on_long_segment():
     c = generate_cutlist(t, cut)
     seg = c["segments"][0]
     assert abs(seg["start"] - (1.0 + cut["trim_start"])) < 0.001, seg
-    assert abs(seg["end"] - (10.45 - cut["trim_end"])) < 0.001, seg
+    assert abs(seg["end"] - (10.45 - cut["trim_end"] + PAD)) < 0.001, seg
 
 
 def test_adaptive_trim_capped_by_fraction():
+    """O trim de borda nunca passa de trim_max_fraction da duração DO SEGMENTO.
+
+    O segmento que chega no trim é a fala mais o pad de saída, não a fala pura
+    — a fixture antiga media a fração sobre a fala e, depois que o pad entrou
+    (2026-08-04), o teto deixou de morder: o teste passou a não exercitar nada.
+    0.75s de fala viram um segmento de 0.90s, onde o teto (0.108s) é menor que
+    o trim_end cheio (0.12s) e portanto manda.
+    """
     cut = load_style("seco")["cut"]
-    t = make_transcript([("palavra", 1.0, 1.45), ("curta", 1.45, 1.9)])  # 0.9s
-    c = generate_cutlist(t, cut)
-    seg = c["segments"][0]
-    allowed = cut["trim_max_fraction"] * 0.9
-    assert abs(seg["end"] - (1.9 - allowed)) < 0.001, \
-        f"trim_end devia ser limitado a {allowed:.3f}s: {seg}"
-    assert abs(seg["start"] - (1.0 + cut["trim_start"])) < 0.001, seg
+    fala = 0.75
+    t = make_transcript([("palavralonga", 1.0, 1.0 + fala)])
+    seg = generate_cutlist(t, cut)["segments"][0]
+
+    seg_dur = fala + PAD
+    teto = cut["trim_max_fraction"] * seg_dur
+    assert teto < cut["trim_end"], \
+        "fixture não exercita o teto: aumente a folga entre fala e trim_end"
+
+    aplicado = (1.0 + fala + PAD) - seg["end"]
+    assert abs(aplicado - teto) < 0.001, \
+        f"trim_end devia parar no teto de {teto:.3f}s, aplicou {aplicado:.3f}s"
 
 
 def test_short_last_word_zeroes_trim_end():
@@ -213,7 +231,8 @@ def test_short_last_word_zeroes_trim_end():
     ])
     c = generate_cutlist(t, cut)
     seg = c["segments"][0]
-    assert seg["end"] == 1.2, f"última palavra curta truncada: {seg}"
+    assert abs(seg["end"] - (1.2 + PAD)) < 0.001, \
+        f"última palavra curta truncada: {seg}"
     assert abs(seg["start"] - cut["trim_start"]) < 0.001, seg
 
 
@@ -260,7 +279,7 @@ def test_style_seco_loads_and_applies():
     c = generate_cutlist(t, cut)
     seg = c["segments"][0]
     assert abs(seg["start"] - (1.0 + cut["trim_start"])) < 0.001, seg
-    assert abs(seg["end"] - (2.2 - cut["trim_end"])) < 0.001, seg
+    assert abs(seg["end"] - (2.2 - cut["trim_end"] + PAD)) < 0.001, seg
     assert c["settings"]["max_word_gap"] == cut["max_word_gap"]
 
 

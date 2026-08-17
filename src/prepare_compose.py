@@ -18,12 +18,10 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "adapters"))
-from compose import (find_scene_starts, format_srt, group_captions,
+from core.transcript import (find_scene_starts, format_srt, group_captions,
                      parse_brief_scenes, remap_words)
 
-from render_ffmpeg import load_style
+from core import load_style
 
 
 def main() -> None:

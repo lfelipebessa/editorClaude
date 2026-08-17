@@ -6,9 +6,8 @@ Rodar: .venv/bin/python tests/test_color_chain.py
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "adapters"))
 
-from render_ffmpeg import build_color_chain, build_finish_chain, load_style
+from core import build_color_chain, build_finish_chain, load_style
 
 
 def test_adjust_only_chain():

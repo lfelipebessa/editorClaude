@@ -21,14 +21,12 @@ import tempfile
 from math import ceil
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from render_ffmpeg import (FFMPEG, build_audio_chain, build_color_chain,
+from core import (FFMPEG, build_audio_chain, build_color_chain,
                            build_filter, build_finish_chain, build_music_chain,
                            load_style, measure_loudness, measure_music_loudness,
                            pick_streams, probe_resolution, resolve_music_file)
 
-from compose import parse_srt
+from core.transcript import parse_srt
 
 
 def build_mg_track(scenes: list[dict], total: float,

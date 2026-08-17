@@ -12,7 +12,7 @@ Palavra da copy que não foi falada nunca entra no handoff.
 import re
 from difflib import SequenceMatcher
 
-from compose import normalize_text
+from core.transcript import normalize_text
 
 FRONTMATTER_RE = re.compile(r"\A---\r?\n.*?\r?\n---\r?\n", re.DOTALL)
 # marcador TELA: forma nua, bullet (-), blockquote (>), label em negrito

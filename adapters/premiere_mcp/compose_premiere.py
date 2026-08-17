@@ -32,7 +32,7 @@ from fit_camera import fit as fit_camera
 from render_premiere import (BRIDGE_TEMP_DIR, SERVER_ENTRY, MCPError,
                              MCPStdioClient, build_batch, find_key)
 
-from render_ffmpeg import (FFMPEG, FFPROBE, load_style,  # noqa: E402
+from core import (FFMPEG, FFPROBE, load_style,  # noqa: E402
                            measure_music_loudness, music_gain_db,
                            resolve_music_file)
 

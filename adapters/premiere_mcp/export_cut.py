@@ -16,13 +16,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from render_premiere import (BRIDGE_TEMP_DIR, SERVER_ENTRY, MCPError,
                              MCPStdioClient, load_style)
 from finalize_premiere import read_camera_clips
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
-from compose import merge_corrected_text, parse_srt
+from core.transcript import merge_corrected_text, parse_srt
 from cut_artifacts import (infer_speed_rate, segments_from_clips,
                            write_cut_artifacts)
 
